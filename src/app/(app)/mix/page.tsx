@@ -7,7 +7,7 @@ export default async function MixPage() {
   const { supabase, organizationId } = await getSessionAndOrg();
   const { data: chemicals } = await supabase
     .from("chemicals")
-    .select("id, name, unit")
+    .select("id, name, unit, category")
     .eq("organization_id", organizationId)
     .order("name");
   const { data: recipes } = await supabase
