@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer } from "../actions";
+import { WorkflowStepper } from "@/components/workflow-stepper";
+import { loadWorkflow } from "@/lib/workflow";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   if (!inv) notFound();
 
   const { data: payments } = await supabase.from("payments").select("*").eq("invoice_id", id).order("payment_date", { ascending: false });
+
+  const workflow = await loadWorkflow({ invoiceId: id });
 
   const sortedItems = ((inv.invoice_line_items as any[]) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const markSent = setInvoiceStatus.bind(null, inv.id, "sent");
@@ -51,6 +55,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </div>
+
+      <WorkflowStepper workflow={workflow} />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

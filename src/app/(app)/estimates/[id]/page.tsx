@@ -5,6 +5,8 @@ import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstima
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
+import { WorkflowStepper } from "@/components/workflow-stepper";
+import { loadWorkflow } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,8 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
     .select("*")
     .eq("estimate_id", id)
     .order("created_at", { ascending: false });
+
+  const workflow = await loadWorkflow({ estimateId: id });
 
   const sortedItems = ((est.estimate_line_items as any[]) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const markSent = setEstimateStatus.bind(null, est.id, "sent");
@@ -53,6 +57,8 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
           {est.status !== "converted" && <form action={convert}><button className="btn-primary">Convert to invoice →</button></form>}
         </div>
       </div>
+
+      <WorkflowStepper workflow={workflow} />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

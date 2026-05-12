@@ -29,6 +29,7 @@ const NAV: NavItem[] = [
 
 const MOBILE_TABS: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "▦" },
+  { href: "/estimates", label: "Estimates", icon: "✎" },
   { href: "/jobs", label: "Jobs", icon: "⚒" },
   { href: "/customers", label: "Customers", icon: "♟" },
   { href: "/invoices", label: "Invoices", icon: "$" },
@@ -166,7 +167,7 @@ export function AppShell({
       </main>
 
       {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 grid grid-cols-4">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 grid grid-cols-5">
         {MOBILE_TABS.map((item) => {
           const count = badgeFor(item.href);
           return (

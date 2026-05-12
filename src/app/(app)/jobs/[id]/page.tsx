@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setJobStatus, deleteJob } from "../actions";
 import { createGalleryLink } from "./gallery-actions";
+import { WorkflowStepper } from "@/components/workflow-stepper";
+import { loadWorkflow } from "@/lib/workflow";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { customerDisplayName, formatCurrency, formatDateTime, statusColor } from "@/lib/utils";
@@ -32,6 +34,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     .eq("job_id", id)
     .order("created_at", { ascending: false });
 
+  const workflow = await loadWorkflow({ jobId: id });
+
   const advance = job.status === "scheduled" ? "in_progress" : job.status === "in_progress" ? "completed" : null;
   const advanceAction = advance ? setJobStatus.bind(null, id, advance) : null;
   const del = deleteJob.bind(null, id);
@@ -54,6 +58,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           )}
         </div>
       </div>
+
+      <WorkflowStepper workflow={workflow} />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

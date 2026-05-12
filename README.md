@@ -91,6 +91,16 @@ Open http://localhost:3000. Two ways in:
 - Connect/disconnect Google Drive (OAuth2 refresh tokens stored per org)
 - Integration status indicators (Stripe / Resend / Maps / Drive)
 
+## Session persistence
+
+Auth cookies are set with `maxAge` of one year and `sameSite=lax`, and the
+middleware silently refreshes the access token on every authenticated request.
+Users stay signed in on phone or laptop until they explicitly hit **Sign out**.
+
+For full year-long persistence even after extended inactivity, also bump the
+**Supabase Dashboard → Authentication → Sessions → Inactivity Timeout** to a
+long value (e.g. 365 days). Default is 30 days.
+
 ## Architecture
 
 - **Next.js 14 App Router** with React Server Components + Server Actions

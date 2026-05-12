@@ -14,7 +14,12 @@ export async function updateSession(request: NextRequest) {
       );
       supabaseResponse = NextResponse.next({ request });
       cookiesToSet.forEach(({ name, value, options }) =>
-        supabaseResponse.cookies.set(name, value, options),
+        // Keep users signed in for a year unless they explicitly sign out.
+        supabaseResponse.cookies.set(name, value, {
+          ...options,
+          maxAge: 60 * 60 * 24 * 365,
+          sameSite: "lax",
+        }),
       );
     },
   };
