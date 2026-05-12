@@ -118,7 +118,52 @@ export async function setEstimateStatus(id: string, status: string) {
   if (status === "sent") patch.sent_at = new Date().toISOString();
   if (status === "accepted") patch.accepted_at = new Date().toISOString();
   await supabase.from("estimates").update(patch).eq("id", id).eq("organization_id", organizationId);
+
+  // Owner just accepted an estimate -> mirror what the public approval flow does
+  // (accept_estimate_by_token RPC): make sure there is an open job ready to schedule.
+  if (status === "accepted") {
+    await ensureJobForEstimate(id, "scheduled");
+  }
+
   revalidatePath(`/estimates/${id}`);
+  revalidatePath("/jobs");
+}
+
+async function ensureJobForEstimate(estimateId: string, jobStatus: "scheduled" | "completed" = "scheduled") {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: existing } = await supabase
+    .from("jobs")
+    .select("id")
+    .eq("estimate_id", estimateId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: est } = await supabase
+    .from("estimates")
+    .select("customer_id, property_id, estimate_number, total, duration_minutes, buffer_minutes, notes")
+    .eq("id", estimateId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!est) return null;
+
+  const insert: any = {
+    organization_id: organizationId,
+    customer_id: est.customer_id,
+    property_id: est.property_id,
+    estimate_id: estimateId,
+    title: `Job from ${est.estimate_number}`,
+    description: est.notes,
+    status: jobStatus,
+    total_amount: est.total,
+    duration_minutes: est.duration_minutes,
+    buffer_minutes: est.buffer_minutes ?? 30,
+  };
+  if (jobStatus === "completed") {
+    insert.actual_end = new Date().toISOString();
+  }
+  const { data: job } = await supabase.from("jobs").insert(insert).select("id").single();
+  return job?.id ?? null;
 }
 
 export async function convertEstimateToInvoice(estimateId: string) {
@@ -172,6 +217,13 @@ export async function convertEstimateToInvoice(estimateId: string) {
     );
   }
   await supabase.from("estimates").update({ status: "converted" }).eq("id", est.id);
+
+  // Make sure a job exists too, marked completed since we're skipping straight to invoice.
+  // Then link the invoice to it so the workflow stepper resolves end-to-end.
+  const jobId = await ensureJobForEstimate(est.id, "completed");
+  if (jobId) {
+    await supabase.from("invoices").update({ job_id: jobId }).eq("id", inv.id);
+  }
 
   revalidatePath("/invoices");
   redirect(`/invoices/${inv.id}`);
