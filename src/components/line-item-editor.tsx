@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { MeasurementModal } from "./measurement-modal";
 
 type Item = { description: string; quantity: number; unit_price: number; photos: string[] };
 type Service = { id: string; name: string; default_price: number | null };
@@ -13,18 +14,23 @@ export function LineItemEditor({
   taxRateInitial,
   discountInitial,
   organizationId,
+  mapsApiKey,
+  initialAddress,
 }: {
   services: Service[];
   initial?: Item[];
   taxRateInitial?: number;
   discountInitial?: number;
   organizationId: string;
+  mapsApiKey?: string | null;
+  initialAddress?: string;
 }) {
   const [items, setItems] = useState<Item[]>(initial?.length ? initial : [{ description: "", quantity: 1, unit_price: 0, photos: [] }]);
   const [taxRate, setTaxRate] = useState<number>(taxRateInitial ?? 0);
   const [discount, setDiscount] = useState<number>(discountInitial ?? 0);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [measuringIdx, setMeasuringIdx] = useState<number | null>(null);
   const supabase = useRef(createClient()).current;
 
   function update(i: number, patch: Partial<Item>) {
@@ -74,6 +80,26 @@ export function LineItemEditor({
 
   return (
     <div className="space-y-3">
+      {measuringIdx !== null && (
+        <MeasurementModal
+          apiKey={mapsApiKey ?? null}
+          initialAddress={initialAddress}
+          onClose={() => setMeasuringIdx(null)}
+          onConfirm={(sqft) => {
+            const idx = measuringIdx;
+            if (idx !== null && sqft > 0) {
+              // Drop the measured sqft into the quantity column of that line.
+              update(idx, { quantity: sqft });
+              // If the line has no description yet, hint at sqft so it's obvious why qty is so high.
+              if (!items[idx].description.trim()) {
+                update(idx, { description: `${sqft.toLocaleString()} sqft area` });
+              }
+            }
+            setMeasuringIdx(null);
+          }}
+        />
+      )}
+
       <div className="space-y-3">
         {items.map((it, i) => (
           <div key={i} className="border border-gray-200 rounded-md p-2.5 space-y-2">
@@ -144,6 +170,13 @@ export function LineItemEditor({
                   className="hidden"
                 />
               </label>
+              <button
+                type="button"
+                onClick={() => setMeasuringIdx(i)}
+                className="btn-ghost text-xs"
+              >
+                + Add measurement
+              </button>
               {it.photos.map((url) => (
                 <div key={url} className="relative group">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -40,12 +40,16 @@ export function MeasurementMap({
   initialCenter,
   services,
   onChange,
+  hideFormFields,
+  compact,
 }: {
   apiKey: string | null;
   initialAddress?: string;
   initialCenter?: { lat: number; lng: number };
   services: Service[];
   onChange?: (polys: Polygon[]) => void;
+  hideFormFields?: boolean;
+  compact?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -165,15 +169,18 @@ export function MeasurementMap({
 
   return (
     <div className="space-y-3">
-      <form
-        onSubmit={(e) => { e.preventDefault(); geocode(search); }}
-        className="flex gap-2"
-      >
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search property address…" className="flex-1" />
-        <button type="submit" className="btn-secondary">Go</button>
-      </form>
+      <div className="flex gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); geocode(search); } }}
+          placeholder="Search property address…"
+          className="flex-1"
+        />
+        <button type="button" onClick={() => geocode(search)} className="btn-secondary">Go</button>
+      </div>
 
-      <div ref={mapRef} className="w-full h-[420px] bg-gray-200 rounded-lg overflow-hidden border border-gray-200" />
+      <div ref={mapRef} className={`w-full ${compact ? "h-[320px] sm:h-[380px]" : "h-[420px]"} bg-gray-200 rounded-lg overflow-hidden border border-gray-200`} />
       {status && <p className="text-xs text-amber-700">{status}</p>}
       <p className="text-xs text-gray-500">Tip: pick the polygon tool at the top of the map, click to add corners, double-click to finish. Right-click a corner to remove it.</p>
 
@@ -205,12 +212,16 @@ export function MeasurementMap({
                 <span className="col-span-10 sm:col-span-2 text-sm font-medium text-right">{Math.round(p.area_sqft).toLocaleString()} sqft</span>
                 <button type="button" onClick={() => removePoly(p.id)} className="col-span-2 sm:col-span-1 text-right text-red-600 text-sm">✕</button>
 
-                {/* Hidden inputs so a parent form can submit them */}
-                <input type="hidden" name="m_label" value={p.label} />
-                <input type="hidden" name="m_material" value={p.material} />
-                <input type="hidden" name="m_service_id" value={p.service_id ?? ""} />
-                <input type="hidden" name="m_area_sqft" value={p.area_sqft.toString()} />
-                <input type="hidden" name="m_polygon" value={JSON.stringify(p.path)} />
+                {!hideFormFields && (
+                  <>
+                    {/* Hidden inputs so a parent form can submit them */}
+                    <input type="hidden" name="m_label" value={p.label} />
+                    <input type="hidden" name="m_material" value={p.material} />
+                    <input type="hidden" name="m_service_id" value={p.service_id ?? ""} />
+                    <input type="hidden" name="m_area_sqft" value={p.area_sqft.toString()} />
+                    <input type="hidden" name="m_polygon" value={JSON.stringify(p.path)} />
+                  </>
+                )}
               </li>
             ))}
           </ul>

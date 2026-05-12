@@ -49,7 +49,11 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
 
         <div className="card-padded">
           <h2 className="font-semibold mb-3">Line items</h2>
-          <LineItemEditor services={(services as any) ?? []} organizationId={organizationId} />
+          <LineItemEditor
+            services={(services as any) ?? []}
+            organizationId={organizationId}
+            mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}
+          />
         </div>
 
         <div className="card-padded space-y-3">
