@@ -4,6 +4,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { setJobStatus, deleteJob } from "../actions";
 import { createGalleryLink } from "./gallery-actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
+import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
@@ -60,6 +61,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <WorkflowStepper workflow={workflow} />
+      <NextStepBanner
+        workflow={workflow}
+        customerHasEmail={!!(job.customers as any)?.email}
+      />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

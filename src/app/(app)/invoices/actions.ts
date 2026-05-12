@@ -279,11 +279,27 @@ export async function saveInvoiceToDrive(id: string) {
 }
 
 export async function emailInvoiceToCustomer(id: string) {
+  // Auto-create the Stripe payment link first if Stripe is configured and we don't have one yet.
+  let paymentLink: string | null = null;
+  {
+    const { inv: pre } = await loadInvoiceForDoc(id);
+    paymentLink = pre.stripe_payment_link ?? null;
+    if (!paymentLink && getStripe()) {
+      try {
+        await createStripePaymentLink(id);
+      } catch (e) {
+        // If Stripe fails, still send the invoice without the link.
+        console.error("Stripe link generation failed:", e);
+      }
+    }
+  }
+
   const { organization, inv } = await loadInvoiceForDoc(id);
   const cust: any = inv.customers;
   if (!cust?.email) throw new Error("Customer has no email.");
+
   const items = (inv.invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const html = invoiceHtml({
+  const docHtml = invoiceHtml({
     org: organization,
     customer: cust,
     invoiceNumber: inv.invoice_number,
@@ -296,6 +312,17 @@ export async function emailInvoiceToCustomer(id: string) {
     notes: inv.notes, terms: inv.terms, paid: inv.status === "paid",
     currency: organization?.currency,
   });
+
+  // Prepend a "Pay now" call-to-action when we have a Stripe link
+  const html = inv.stripe_payment_link
+    ? `<!doctype html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;">
+        <div style="max-width:560px;margin:0 auto 16px;text-align:center;">
+          <a href="${inv.stripe_payment_link}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;border-radius:8px;font-size:16px;">Pay invoice online →</a>
+          <p style="font-size:12px;color:#64748b;margin-top:8px;">Secure payment via Stripe</p>
+        </div>
+      </body></html>${docHtml}`
+    : docHtml;
+
   const subject = inv.status === "paid" ? `Receipt — Invoice ${inv.invoice_number}` : `Invoice ${inv.invoice_number} from ${organization?.name}`;
   await sendEmail({ to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
   await setInvoiceStatus(id, inv.status === "draft" ? "sent" : inv.status);

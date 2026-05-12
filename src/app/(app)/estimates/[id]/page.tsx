@@ -6,6 +6,7 @@ import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { WorkflowStepper } from "@/components/workflow-stepper";
+import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,11 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
       </div>
 
       <WorkflowStepper workflow={workflow} />
+      <NextStepBanner
+        workflow={workflow}
+        approvalToken={est.approval_token}
+        customerHasEmail={!!(est.customers as any)?.email}
+      />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

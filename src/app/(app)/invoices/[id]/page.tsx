@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer } from "../actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
+import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 
@@ -57,6 +58,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <WorkflowStepper workflow={workflow} />
+      <NextStepBanner
+        workflow={workflow}
+        customerHasEmail={!!(inv.customers as any)?.email}
+      />
 
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

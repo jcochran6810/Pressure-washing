@@ -167,6 +167,53 @@ async function nextInvoiceNumber(supabase: any, organizationId: string) {
   return `${prefix}-${num}`;
 }
 
+export async function scheduleJob(id: string, formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const start = String(formData.get("scheduled_start") || "");
+  const end = String(formData.get("scheduled_end") || "") || null;
+  if (!start) throw new Error("Start time required");
+  await supabase
+    .from("jobs")
+    .update({ scheduled_start: start, scheduled_end: end })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  // Schedule the appointment reminder for the new time
+  const { data: job } = await supabase.from("jobs").select("customer_id").eq("id", id).single();
+  if (job) {
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("appointment_reminder_hours")
+      .eq("id", organizationId)
+      .single();
+    const hours = org?.appointment_reminder_hours ?? 24;
+    const remindAt = new Date(start);
+    remindAt.setHours(remindAt.getHours() - hours);
+    if (remindAt > new Date()) {
+      // Remove any existing scheduled appointment reminders for this job, then add the new one
+      await supabase
+        .from("customer_reminders")
+        .delete()
+        .eq("job_id", id)
+        .eq("kind", "appointment")
+        .eq("status", "scheduled");
+      await supabase.from("customer_reminders").insert({
+        organization_id: organizationId,
+        customer_id: job.customer_id,
+        job_id: id,
+        kind: "appointment",
+        channel: "email",
+        scheduled_for: remindAt.toISOString(),
+        message: `Reminder: your appointment is in ${hours} hours.`,
+      });
+    }
+  }
+
+  revalidatePath(`/jobs/${id}`);
+  revalidatePath("/jobs");
+  revalidatePath("/calendar");
+}
+
 export async function deleteJob(id: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
   await supabase.from("jobs").delete().eq("id", id).eq("organization_id", organizationId);
