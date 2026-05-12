@@ -9,17 +9,23 @@ import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-type LineItem = { description: string; quantity: number; unit_price: number };
+type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
 
 function parseLineItems(formData: FormData): LineItem[] {
   const descs = formData.getAll("li_description") as string[];
   const qtys = formData.getAll("li_quantity") as string[];
   const prices = formData.getAll("li_unit_price") as string[];
+  const photoStrs = formData.getAll("li_photos") as string[];
   const out: LineItem[] = [];
   for (let i = 0; i < descs.length; i++) {
     const d = (descs[i] || "").trim();
     if (!d) continue;
-    out.push({ description: d, quantity: Number(qtys[i] || 1), unit_price: Number(prices[i] || 0) });
+    let urls: string[] = [];
+    try {
+      const parsed = JSON.parse(photoStrs[i] || "[]");
+      if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
+    } catch {}
+    out.push({ description: d, quantity: Number(qtys[i] || 1), unit_price: Number(prices[i] || 0), photos: urls });
   }
   return out;
 }
@@ -59,7 +65,15 @@ export async function createInvoice(formData: FormData) {
 
   if (items.length) {
     await supabase.from("invoice_line_items").insert(
-      items.map((i, idx) => ({ invoice_id: inv.id, description: i.description, quantity: i.quantity, unit_price: i.unit_price, total: i.quantity * i.unit_price, sort_order: idx })),
+      items.map((i, idx) => ({
+        invoice_id: inv.id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
     );
   }
 

@@ -67,7 +67,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <tbody>
             {sortedItems.map((li) => (
               <tr key={li.id}>
-                <td>{li.description}</td>
+                <td>
+                  <div>{li.description}</div>
+                  {!!li.photo_urls?.length && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {li.photo_urls.map((u: string) => (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <a key={u} href={u} target="_blank" rel="noopener"><img src={u} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" /></a>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td className="text-right">{li.quantity}</td>
                 <td className="text-right">{formatCurrency(Number(li.unit_price))}</td>
                 <td className="text-right font-medium">{formatCurrency(Number(li.total))}</td>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { createInvoice } from "../actions";
 import { LineItemEditor } from "@/components/line-item-editor";
-import { customerDisplayName } from "@/lib/utils";
+import { CustomerPicker } from "@/components/customer-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +25,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
       <form action={createInvoice} className="space-y-5">
         <div className="card-padded grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
-            <label>Customer</label>
-            <select name="customer_id" defaultValue={customer || ""} required className="w-full">
-              <option value="">Select customer…</option>
-              {customers?.map((c) => <option key={c.id} value={c.id}>{customerDisplayName(c)}</option>)}
-            </select>
+            <CustomerPicker initialCustomers={(customers as any) ?? []} defaultCustomerId={customer} />
           </div>
           <div>
             <label>Issue date</label>
@@ -43,7 +39,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
 
         <div className="card-padded">
           <h2 className="font-semibold mb-3">Line items</h2>
-          <LineItemEditor services={(services as any) ?? []} />
+          <LineItemEditor services={(services as any) ?? []} organizationId={organizationId} />
         </div>
 
         <div className="card-padded space-y-3">
