@@ -74,6 +74,71 @@ export async function createInvoice(formData: FormData) {
   redirect(`/invoices/${inv.id}`);
 }
 
+/**
+ * Edit a draft invoice's line items, notes, terms, tax rate, and discount.
+ * Only allowed while the invoice is in `draft` state — once sent, the line
+ * items are frozen so the customer never sees an invoice change underneath
+ * them. Replaces line items wholesale and recomputes totals.
+ */
+export async function updateInvoice(id: string, formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("status, stripe_payment_link")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!existing) throw new Error("Invoice not found");
+  if (existing.status !== "draft") {
+    throw new Error("Only draft invoices can be edited. Mark this one as draft first if you need to make changes.");
+  }
+
+  const tax_rate = Number(formData.get("tax_rate") || 0);
+  const discount_amount = Number(formData.get("discount_amount") || 0);
+  const items = parseLineItems(formData);
+  const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  const notes = String(formData.get("notes") || "").trim() || null;
+  const terms = String(formData.get("terms") || "").trim() || null;
+
+  await supabase
+    .from("invoices")
+    .update({
+      tax_rate,
+      discount_amount,
+      tax_amount,
+      subtotal,
+      total,
+      balance_due: total,
+      notes,
+      terms,
+      // If the total changed, the existing Stripe payment link is stale — clear it.
+      stripe_payment_link: existing.stripe_payment_link ? null : existing.stripe_payment_link,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  // Replace line items wholesale (simpler than diffing).
+  await supabase.from("invoice_line_items").delete().eq("invoice_id", id);
+  if (items.length) {
+    await supabase.from("invoice_line_items").insert(
+      items.map((i, idx) => ({
+        invoice_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
+    );
+  }
+
+  revalidatePath(`/invoices/${id}`);
+}
+
 export async function setInvoiceStatus(id: string, status: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const patch: any = { status };

@@ -2,7 +2,6 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { nextDocumentNumber } from "@/lib/document-number";
-import { emailInvoiceToCustomer } from "@/app/(app)/invoices/actions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -88,7 +87,6 @@ export async function setJobStatus(id: string, status: string) {
         if (!invoice_number) invoice_number = await nextDocumentNumber(supabase, organizationId);
         const due = new Date(); due.setDate(due.getDate() + 14);
 
-        let createdInvoiceId: string | null = null;
         if (job.estimate_id) {
           const { data: est } = await supabase
             .from("estimates")
@@ -118,7 +116,6 @@ export async function setJobStatus(id: string, status: string) {
               })
               .select("id")
               .single();
-            createdInvoiceId = inv?.id ?? null;
             if (inv && est.estimate_line_items?.length) {
               await supabase.from("invoice_line_items").insert(
                 est.estimate_line_items.map((li: any) => ({
@@ -151,7 +148,6 @@ export async function setJobStatus(id: string, status: string) {
             })
             .select("id")
             .single();
-          createdInvoiceId = inv?.id ?? null;
           if (inv && amount > 0) {
             await supabase.from("invoice_line_items").insert([{
               invoice_id: inv.id,
@@ -164,16 +160,9 @@ export async function setJobStatus(id: string, status: string) {
           }
         }
 
-        // Auto-email the freshly drafted invoice to the customer. If the
-        // customer has no email on file or Resend isn't configured, swallow
-        // the error — the invoice stays in draft for the owner to handle.
-        if (createdInvoiceId) {
-          try {
-            await emailInvoiceToCustomer(createdInvoiceId);
-          } catch (e) {
-            console.error("Auto-email of invoice on job complete failed:", e);
-          }
-        }
+        // The invoice intentionally stays in draft so the owner can review
+        // and edit line items / notes / photos on the invoice detail page
+        // before clicking "Send invoice to customer".
       }
     }
   }

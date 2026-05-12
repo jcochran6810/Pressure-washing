@@ -146,16 +146,25 @@ export function NextStepBanner({
   if (workflow.invoiceId && !workflow.invoiceSent && !workflow.invoicePaid) {
     const emailInv = emailInvoiceToCustomer.bind(null, workflow.invoiceId);
     return (
-      <Banner tone="primary" eyebrow="Next step" title="Send the invoice with payment link">
+      <Banner tone="primary" eyebrow="Next step" title="Review, then send the invoice">
         <p className="text-sm text-gray-700 mb-3">
-          Creates the Stripe payment link if Stripe is connected, includes a "Pay online" button in the email,
-          and marks the invoice as sent.
+          The invoice is in draft — the customer hasn't seen it yet. Edit the line items, totals, notes,
+          and add any final after-photos on the invoice page below. When it's right, click send and we'll
+          create the Stripe payment link (if Stripe is connected), email a "Pay online" button to the
+          customer, and mark the invoice as sent.
         </p>
-        <form action={emailInv}>
-          <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
-            ✉ Send invoice to customer
-          </button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          {workflow.invoiceId && (
+            <Link href={`/invoices/${workflow.invoiceId}`} className="btn-secondary">
+              Review / edit invoice
+            </Link>
+          )}
+          <form action={emailInv}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
+              ✉ Send invoice to customer
+            </button>
+          </form>
+        </div>
         {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable sending.</p>}
       </Banner>
     );

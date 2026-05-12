@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer } from "../actions";
+import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, updateInvoice } from "../actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { CardChargeForm } from "@/components/card-charge-form";
+import { LineItemEditor } from "@/components/line-item-editor";
+import { PhotoUploader } from "@/components/photo-uploader";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { loadWorkflow } from "@/lib/workflow";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { documentLabel } from "@/lib/document-number";
@@ -24,6 +27,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const { data: payments } = await supabase.from("payments").select("*").eq("invoice_id", id).order("payment_date", { ascending: false });
 
+  const isDraft = inv.status === "draft";
+  // Load the services catalog + invoice photos only when editing is possible.
+  const [{ data: services }, { data: invoicePhotos }] = await Promise.all([
+    isDraft
+      ? supabase.from("services").select("id, name, default_price").eq("organization_id", organizationId).eq("active", true).order("name")
+      : Promise.resolve({ data: [] as any[] }),
+    supabase.from("photo_attachments").select("*").eq("invoice_id", id).order("created_at", { ascending: false }),
+  ]);
+  const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
+
   const workflow = await loadWorkflow({ invoiceId: id });
 
   const sortedItems = ((inv.invoice_line_items as any[]) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -34,6 +47,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const saveDrive = saveInvoiceToDrive.bind(null, inv.id);
   const emailInv = emailInvoiceToCustomer.bind(null, inv.id);
   const del = deleteInvoice.bind(null, inv.id);
+  const editInv = updateInvoice.bind(null, inv.id);
+
+  const initialItems = sortedItems.map((li: any) => ({
+    description: li.description,
+    quantity: Number(li.quantity ?? 1),
+    unit_price: Number(li.unit_price ?? 0),
+    photos: (li.photo_urls as string[]) ?? [],
+  }));
 
   return (
     <div>
@@ -74,37 +95,94 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      <div className="card mb-4 overflow-x-auto">
-        <table className="data-table">
-          <thead><tr><th>Description</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
-          <tbody>
-            {sortedItems.map((li) => (
-              <tr key={li.id}>
-                <td>
-                  <div>{li.description}</div>
-                  {!!li.photo_urls?.length && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {li.photo_urls.map((u: string) => (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <a key={u} href={u} target="_blank" rel="noopener"><img src={u} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" /></a>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className="text-right">{li.quantity}</td>
-                <td className="text-right">{formatCurrency(Number(li.unit_price))}</td>
-                <td className="text-right font-medium">{formatCurrency(Number(li.total))}</td>
-              </tr>
-            ))}
-            <tr><td colSpan={3} className="text-right text-gray-500">Subtotal</td><td className="text-right">{formatCurrency(Number(inv.subtotal))}</td></tr>
-            {Number(inv.discount_amount) > 0 && <tr><td colSpan={3} className="text-right text-gray-500">Discount</td><td className="text-right">− {formatCurrency(Number(inv.discount_amount))}</td></tr>}
-            <tr><td colSpan={3} className="text-right text-gray-500">Tax ({(Number(inv.tax_rate) * 100).toFixed(2)}%)</td><td className="text-right">{formatCurrency(Number(inv.tax_amount))}</td></tr>
-            <tr className="font-bold text-base"><td colSpan={3} className="text-right">Total</td><td className="text-right">{formatCurrency(Number(inv.total))}</td></tr>
-            <tr><td colSpan={3} className="text-right text-gray-500">Paid</td><td className="text-right">− {formatCurrency(Number(inv.amount_paid))}</td></tr>
-            <tr className="font-bold text-base text-brand-700"><td colSpan={3} className="text-right">Balance due</td><td className="text-right">{formatCurrency(Number(inv.balance_due))}</td></tr>
-          </tbody>
-        </table>
-      </div>
+      {isDraft ? (
+        <section className="card-padded mb-4 border-amber-300 ring-1 ring-amber-100">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <h2 className="font-semibold">Review &amp; edit before sending</h2>
+              <p className="text-xs text-gray-600">
+                This invoice is in draft. Adjust line items, photos, tax, discount, and notes here — the customer won't
+                see anything until you click <strong>Send invoice to customer</strong>.
+              </p>
+            </div>
+          </div>
+          <form action={editInv}>
+            <LineItemEditor
+              services={(services as any) ?? []}
+              initial={initialItems}
+              taxRateInitial={Number(inv.tax_rate ?? 0)}
+              discountInitial={Number(inv.discount_amount ?? 0)}
+              organizationId={inv.organization_id}
+              mapsApiKey={mapsApiKey}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label>Notes (shown to customer)</label>
+                <textarea name="notes" rows={2} defaultValue={inv.notes ?? ""} className="w-full" />
+              </div>
+              <div>
+                <label>Terms (shown to customer)</label>
+                <textarea name="terms" rows={2} defaultValue={inv.terms ?? ""} className="w-full" />
+              </div>
+            </div>
+            <div className="flex justify-end mt-3">
+              <button className="btn-primary">Save changes</button>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <div className="card mb-4 overflow-x-auto">
+          <table className="data-table">
+            <thead><tr><th>Description</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
+            <tbody>
+              {sortedItems.map((li) => (
+                <tr key={li.id}>
+                  <td>
+                    <div>{li.description}</div>
+                    {!!li.photo_urls?.length && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {li.photo_urls.map((u: string) => (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <a key={u} href={u} target="_blank" rel="noopener"><img src={u} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" /></a>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-right">{li.quantity}</td>
+                  <td className="text-right">{formatCurrency(Number(li.unit_price))}</td>
+                  <td className="text-right font-medium">{formatCurrency(Number(li.total))}</td>
+                </tr>
+              ))}
+              <tr><td colSpan={3} className="text-right text-gray-500">Subtotal</td><td className="text-right">{formatCurrency(Number(inv.subtotal))}</td></tr>
+              {Number(inv.discount_amount) > 0 && <tr><td colSpan={3} className="text-right text-gray-500">Discount</td><td className="text-right">− {formatCurrency(Number(inv.discount_amount))}</td></tr>}
+              <tr><td colSpan={3} className="text-right text-gray-500">Tax ({(Number(inv.tax_rate) * 100).toFixed(2)}%)</td><td className="text-right">{formatCurrency(Number(inv.tax_amount))}</td></tr>
+              <tr className="font-bold text-base"><td colSpan={3} className="text-right">Total</td><td className="text-right">{formatCurrency(Number(inv.total))}</td></tr>
+              <tr><td colSpan={3} className="text-right text-gray-500">Paid</td><td className="text-right">− {formatCurrency(Number(inv.amount_paid))}</td></tr>
+              <tr className="font-bold text-base text-brand-700"><td colSpan={3} className="text-right">Balance due</td><td className="text-right">{formatCurrency(Number(inv.balance_due))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {isDraft && (
+        <section className="card-padded mb-4">
+          <h2 className="font-semibold mb-2">Invoice photos</h2>
+          <p className="text-xs text-gray-600 mb-3">
+            Photos here are attached to the invoice itself (e.g. final after-work shots) and visible alongside the line
+            items. Use the line-item editor above to attach photos to a specific charge.
+          </p>
+          <PhotoUploader
+            organizationId={inv.organization_id}
+            targetType="invoice"
+            targetId={inv.id}
+            customerId={inv.customer_id}
+            kind="after"
+          />
+          <div className="mt-3">
+            <PhotoGallery photos={(invoicePhotos as any) ?? []} />
+          </div>
+        </section>
+      )}
 
       {inv.status !== "paid" && inv.status !== "void" && Number(inv.balance_due) > 0 && (
         <div className="card-padded mb-4 border-brand-300 ring-1 ring-brand-100">
