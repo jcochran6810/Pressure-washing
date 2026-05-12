@@ -3,6 +3,7 @@
 import { getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
 import { sendEmail, receiptHtml } from "@/lib/email";
+import { sendSMS, bestCustomerPhone, isSMSConfigured } from "@/lib/sms";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
 import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
@@ -607,6 +608,54 @@ export async function sendReceiptToCustomer(invoiceId: string) {
     status: "sent",
   });
   revalidatePath(`/invoices/${invoiceId}`);
+}
+
+/**
+ * Send the invoice (or its receipt) via SMS. Body contains the document
+ * label and either the Stripe payment link (if unpaid) or a thank-you
+ * note (if paid). Useful for customers without email.
+ */
+export async function smsInvoiceToCustomer(id: string) {
+  if (!isSMSConfigured()) throw new Error("SMS is not configured. Set Twilio env vars in .env.local.");
+  let paymentLink: string | null = null;
+  {
+    const { inv: pre } = await loadInvoiceForDoc(id);
+    paymentLink = pre.stripe_payment_link ?? null;
+    if (!paymentLink && getStripe() && pre.status !== "paid") {
+      try {
+        await createStripePaymentLink(id);
+      } catch (e) {
+        console.error("Stripe link generation for SMS failed:", e);
+      }
+    }
+  }
+  const { supabase, organizationId, organization, inv } = await loadInvoiceForDoc(id);
+  const cust: any = inv.customers;
+  const phone = bestCustomerPhone(cust);
+  if (!phone) throw new Error("Customer has no phone number on file.");
+  const label = documentLabel("invoice", inv.status, inv.invoice_number);
+  const total = formatCurrency(Number(inv.total ?? 0), organization?.currency ?? "USD");
+  const balance = formatCurrency(Number(inv.balance_due ?? 0), organization?.currency ?? "USD");
+  const orgName = organization?.name ?? "Your business";
+
+  let body: string;
+  if (inv.status === "paid") {
+    body = `${orgName}: ${label} — payment of ${total} received. Thank you!`;
+  } else if (inv.stripe_payment_link) {
+    body = `${orgName}: ${label} for ${total} (balance ${balance}). Pay online: ${inv.stripe_payment_link}`;
+  } else {
+    body = `${orgName}: ${label} for ${total} (balance ${balance}). Reply to schedule payment.`;
+  }
+  const result = await sendSMS({ to: phone, body: body.slice(0, 320) });
+  if (!result.ok) throw new Error(`SMS send failed: ${result.reason}`);
+  if (inv.status === "draft") {
+    await supabase
+      .from("invoices")
+      .update({ sent_at: new Date().toISOString(), status: "sent" })
+      .eq("id", id)
+      .eq("organization_id", organizationId);
+  }
+  revalidatePath(`/invoices/${id}`);
 }
 
 export async function deleteInvoice(id: string) {

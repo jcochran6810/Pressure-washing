@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer } from "../actions";
+import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer, smsEstimateToCustomer } from "../actions";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { documentLabel } from "@/lib/document-number";
 import { PhotoUploader } from "@/components/photo-uploader";
@@ -39,7 +39,14 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
   const convert = convertEstimateToInvoice.bind(null, est.id);
   const saveDrive = saveEstimateToDrive.bind(null, est.id);
   const emailEst = emailEstimateToCustomer.bind(null, est.id);
+  const smsEst = smsEstimateToCustomer.bind(null, est.id);
   const del = deleteEstimate.bind(null, est.id);
+
+  const cust: any = est.customers;
+  const hasPhone = !!(cust?.mobile_phone || cust?.phone);
+  const smsConfigured = Boolean(
+    process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER,
+  );
 
   return (
     <div>
@@ -52,6 +59,9 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
         <div className="flex flex-wrap gap-2">
           <a href={`/api/documents/estimates/${est.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
           <form action={emailEst}><button className="btn-secondary" disabled={!(est.customers as any)?.email}>Email to customer</button></form>
+          {smsConfigured && (
+            <form action={smsEst}><button className="btn-secondary" disabled={!hasPhone}>Send via SMS</button></form>
+          )}
           <form action={saveDrive}><button className="btn-secondary">Save to Drive</button></form>
           {est.status === "draft" && <form action={markSent}><button className="btn-secondary">Mark sent</button></form>}
           {(est.status === "sent" || est.status === "draft") && <form action={markAccepted}><button className="btn-secondary">Mark accepted</button></form>}

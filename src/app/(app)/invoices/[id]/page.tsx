@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, updateInvoice } from "../actions";
+import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, updateInvoice, smsInvoiceToCustomer } from "../actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { CardChargeForm } from "@/components/card-charge-form";
@@ -48,6 +48,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const emailInv = emailInvoiceToCustomer.bind(null, inv.id);
   const del = deleteInvoice.bind(null, inv.id);
   const editInv = updateInvoice.bind(null, inv.id);
+  const smsInv = smsInvoiceToCustomer.bind(null, inv.id);
+  const invCust: any = inv.customers;
+  const invHasPhone = !!(invCust?.mobile_phone || invCust?.phone);
+  const smsConfigured = Boolean(
+    process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER,
+  );
 
   const initialItems = sortedItems.map((li: any) => ({
     description: li.description,
@@ -67,6 +73,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap gap-2">
           <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
           <form action={emailInv}><button className="btn-secondary" disabled={!(inv.customers as any)?.email}>Email to customer</button></form>
+          {smsConfigured && (
+            <form action={smsInv}><button className="btn-secondary" disabled={!invHasPhone}>Send via SMS</button></form>
+          )}
           <form action={saveDrive}><button className="btn-secondary">Save to Drive</button></form>
           {inv.status === "draft" && <form action={markSent}><button className="btn-secondary">Mark sent</button></form>}
           {inv.stripe_payment_link ? (

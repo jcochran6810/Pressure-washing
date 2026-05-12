@@ -2,6 +2,7 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { sendEmail } from "@/lib/email";
+import { sendSMS, bestCustomerPhone, isSMSConfigured } from "@/lib/sms";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
 import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
@@ -274,6 +275,32 @@ export async function emailEstimateToCustomer(id: string) {
     replyTo: organization?.email ?? undefined,
   });
   await setEstimateStatus(id, "sent");
+}
+
+/**
+ * Send the customer a quote-approval link via SMS. Useful when the customer
+ * has no email but has a phone number. Includes the public /quote/<token>
+ * URL so the customer can approve from their phone.
+ */
+export async function smsEstimateToCustomer(id: string) {
+  if (!isSMSConfigured()) throw new Error("SMS is not configured. Set Twilio env vars in .env.local.");
+  const { supabase, organizationId, organization, est } = await loadEstimateForDoc(id);
+  const cust: any = est.customers;
+  const phone = bestCustomerPhone(cust);
+  if (!phone) throw new Error("Customer has no phone number on file.");
+  if (!est.approval_token) throw new Error("This estimate has no approval link.");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const link = `${appUrl}/quote/${est.approval_token}`;
+  const label = documentLabel("estimate", est.status, est.estimate_number);
+  const body = `${organization?.name ?? "Your quote"}: ${label} is ready. Review & approve here: ${link}`;
+  const result = await sendSMS({ to: phone, body });
+  if (!result.ok) throw new Error(`SMS send failed: ${result.reason}`);
+  await supabase
+    .from("estimates")
+    .update({ sent_at: new Date().toISOString(), status: est.status === "draft" ? "sent" : est.status })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+  revalidatePath(`/estimates/${id}`);
 }
 
 export async function deleteEstimate(id: string) {

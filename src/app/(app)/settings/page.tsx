@@ -12,6 +12,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const emailConfigured = Boolean(process.env.RESEND_API_KEY);
   const mapsConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
   const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
+  const smsConfigured = Boolean(
+    process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER,
+  );
 
   return (
     <div className="max-w-3xl">
@@ -116,6 +119,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             configured={stripeConfigured}
             connected={stripeConfigured}
             setupHint="Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in .env.local."
+          />
+          <IntegrationRow
+            title="Twilio (SMS)"
+            description="Text reminders, quote links, and invoice links to customers — especially handy for customers without email."
+            configured={smsConfigured}
+            connected={smsConfigured}
+            setupHint="Sign up at twilio.com, buy a number, and set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM_NUMBER in .env.local."
           />
         </div>
       </section>
