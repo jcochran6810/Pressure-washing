@@ -181,10 +181,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="card-padded">
         <h3 className="font-semibold mb-1">Quick actions</h3>
         <div className="flex flex-wrap gap-2 text-sm">
+          <Link href="/reports/tax-export" className="btn-primary">📋 Tax export (Schedule C)</Link>
           <Link href="/expenses/new" className="btn-secondary">+ Log expense</Link>
           <Link href="/invoices/new" className="btn-secondary">+ New invoice</Link>
           <Link href="/payments" className="btn-secondary">View payments</Link>
         </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Tax export bundles all income, expenses (auto-mapped to Schedule C lines), chemical-usage COGS, and
+          equipment depreciation for the year — printable on screen or downloadable as a CSV your CPA can paste
+          straight into their software.
+        </p>
       </div>
     </div>
   );
