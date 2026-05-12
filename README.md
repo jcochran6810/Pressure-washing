@@ -14,9 +14,16 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 and create an account. Supabase is already provisioned
-(connection in `.env.local`) — a fresh org, default services, expense categories,
-and lead sources are seeded on signup.
+Open http://localhost:3000. Two ways in:
+- **Sign up** with email/password — gets you a fresh org with default services, expense
+  categories, and lead sources.
+- **Try the demo** (button on the login page) — creates an anonymous Supabase session
+  pre-loaded with realistic sample customers, jobs, invoices, expenses, etc.
+  Requires **Authentication → Providers → Anonymous** to be enabled in the Supabase
+  dashboard. Demo orgs are flagged `is_demo=true` and you can clean them up later with:
+  ```sql
+  delete from auth.users where is_anonymous = true and created_at < now() - interval '30 days';
+  ```
 
 ## Features
 

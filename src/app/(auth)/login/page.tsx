@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { seedDemoData } from "../demo/actions";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -22,6 +24,32 @@ export default function LoginPage() {
     if (error) {
       setError(error.message);
       return;
+    }
+    router.push("/dashboard");
+    router.refresh();
+  }
+
+  async function handleDemo() {
+    setError(null);
+    setDemoLoading(true);
+    const supabase = createClient();
+    const { error: authErr } = await supabase.auth.signInAnonymously({
+      options: { data: { full_name: "Demo User", company_name: "Crystal Clear Pressure Washing (Demo)" } },
+    });
+    if (authErr) {
+      setDemoLoading(false);
+      setError(
+        authErr.message.includes("disabled") || authErr.message.includes("not enabled")
+          ? "Anonymous sign-in isn't enabled on this Supabase project. Enable it in Authentication → Providers → Anonymous, then try again."
+          : authErr.message,
+      );
+      return;
+    }
+    try {
+      await seedDemoData();
+    } catch (e: any) {
+      // Continue — dashboard will still render, just without sample data
+      console.error(e);
     }
     router.push("/dashboard");
     router.refresh();
@@ -52,6 +80,25 @@ export default function LoginPage() {
           </form>
           <p className="mt-4 text-sm text-gray-600 text-center">
             No account? <Link href="/signup" className="text-brand-600 font-medium">Sign up</Link>
+          </p>
+        </div>
+
+        <div className="mt-4 card-padded">
+          <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+            <span className="flex-1 h-px bg-gray-200" />
+            <span>or try it out</span>
+            <span className="flex-1 h-px bg-gray-200" />
+          </div>
+          <button
+            type="button"
+            onClick={handleDemo}
+            disabled={demoLoading}
+            className="btn-secondary w-full"
+          >
+            {demoLoading ? "Loading demo…" : "Try the demo — no signup"}
+          </button>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            Spins up a sandbox account pre-loaded with sample customers, jobs, invoices, and expenses.
           </p>
         </div>
       </div>

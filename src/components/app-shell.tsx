@@ -38,10 +38,12 @@ export function AppShell({
   children,
   orgName,
   userEmail,
+  isDemo,
 }: {
   children: React.ReactNode;
   orgName: string;
   userEmail: string;
+  isDemo?: boolean;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -140,6 +142,14 @@ export function AppShell({
 
       {/* Main */}
       <main className="flex-1 lg:ml-60 pb-20 lg:pb-0">
+        {isDemo && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
+            <span>
+              <strong>Demo mode</strong> — sample data only. Sign up to keep your work.
+            </span>
+            <Link href="/signup" className="text-amber-900 underline font-medium">Create real account</Link>
+          </div>
+        )}
         <div className="px-4 sm:px-6 py-5 sm:py-6 max-w-7xl mx-auto">{children}</div>
       </main>
 

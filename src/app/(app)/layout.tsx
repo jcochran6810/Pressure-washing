@@ -4,7 +4,11 @@ import { getSessionAndOrg } from "@/lib/org";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, organization } = await getSessionAndOrg();
   return (
-    <AppShell orgName={organization?.name ?? "Your Business"} userEmail={user.email ?? ""}>
+    <AppShell
+      orgName={organization?.name ?? "Your Business"}
+      userEmail={user.email ?? "Demo user"}
+      isDemo={!!organization?.is_demo}
+    >
       {children}
     </AppShell>
   );
