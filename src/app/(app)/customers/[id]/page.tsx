@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { addProperty, deleteCustomer } from "../actions";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +111,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <RelatedSection title="Estimates" emptyMsg="No estimates." href="/estimates">
         {estimates?.map((e: any) => (
           <li key={e.id} className="py-2 flex justify-between items-center text-sm">
-            <span className="font-medium">{e.estimate_number}</span>
+            <span className="font-medium">{documentLabel("estimate", e.status, e.estimate_number)}</span>
             <span className="text-gray-500">{formatDate(e.issue_date)}</span>
             <span className={`badge ${statusColor(e.status)}`}>{e.status}</span>
             <span className="font-medium">{formatCurrency(Number(e.total))}</span>
@@ -131,7 +132,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <RelatedSection title="Invoices" emptyMsg="No invoices." href="/invoices">
         {invoices?.map((i: any) => (
           <li key={i.id} className="py-2 flex justify-between items-center text-sm">
-            <Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{i.invoice_number}</Link>
+            <Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{documentLabel("invoice", i.status, i.invoice_number)}</Link>
             <span className="text-gray-500">{formatDate(i.due_date)}</span>
             <span className={`badge ${statusColor(i.status)}`}>{i.status}</span>
             <span className="font-medium">{formatCurrency(Number(i.balance_due))}</span>

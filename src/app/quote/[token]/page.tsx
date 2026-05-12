@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 import { approveQuote, declineQuote } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
           <div className="flex items-start justify-between flex-wrap gap-2">
             <div>
               <h1 className="text-2xl font-bold">{est.organizations?.name ?? "Estimate"}</h1>
-              <p className="text-sm text-gray-500">Estimate {est.estimate_number}</p>
+              <p className="text-sm text-gray-500">{documentLabel("estimate", est.status, est.estimate_number)}</p>
             </div>
             <div className="text-right text-xs text-gray-500">
               {est.organizations?.phone && <p>{est.organizations.phone}</p>}

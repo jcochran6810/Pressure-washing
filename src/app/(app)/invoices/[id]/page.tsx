@@ -4,8 +4,10 @@ import { getSessionAndOrg } from "@/lib/org";
 import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer } from "../actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
+import { CardChargeForm } from "@/components/card-charge-form";
 import { loadWorkflow } from "@/lib/workflow";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +40,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       <Link href="/invoices" className="text-sm text-brand-600 hover:underline">← Invoices</Link>
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-5">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{inv.invoice_number}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">{documentLabel("invoice", inv.status, inv.invoice_number)}</h1>
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -103,6 +105,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </tbody>
         </table>
       </div>
+
+      {inv.status !== "paid" && inv.status !== "void" && Number(inv.balance_due) > 0 && (
+        <div className="card-padded mb-4 border-brand-300 ring-1 ring-brand-100">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Charge a card now (virtual terminal)</h2>
+            <span className="text-xs text-gray-500">Type the customer's card here</span>
+          </div>
+          <CardChargeForm invoiceId={inv.id} defaultAmount={Number(inv.balance_due)} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card-padded">

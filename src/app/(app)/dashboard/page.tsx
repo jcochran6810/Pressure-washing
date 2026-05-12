@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { formatCurrency, formatDate, customerDisplayName, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { supabase, organizationId } = await getSessionAndOrg();
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
 
   const now = new Date();
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate() + 7);
-  const followUpCutoff = new Date(); followUpCutoff.setDate(followUpCutoff.getDate() - 3); // estimates sent 3+ days ago without action
+  const followupDays = Number((organization as any)?.estimate_followup_days ?? 3);
+  const followUpCutoff = new Date(); followUpCutoff.setDate(followUpCutoff.getDate() - followupDays);
 
   const [
     { count: customerCount },
@@ -115,7 +117,7 @@ export default async function DashboardPage() {
               {openInvoices.map((i: any) => (
                 <li key={i.id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <Link href={`/invoices/${i.id}`} className="font-medium text-gray-900 truncate block hover:text-brand-700">{i.invoice_number}</Link>
+                    <Link href={`/invoices/${i.id}`} className="font-medium text-gray-900 truncate block hover:text-brand-700">{documentLabel("invoice", i.status, i.invoice_number)}</Link>
                     <p className="text-xs text-gray-500 truncate">{customerDisplayName(i.customers ?? {})}</p>
                   </div>
                   <div className="text-right">
@@ -130,7 +132,7 @@ export default async function DashboardPage() {
 
         <section className="card">
           <header className="px-4 py-3 border-b flex items-center justify-between">
-            <h2 className="font-semibold">Follow up — estimates sent ≥ 3 days ago</h2>
+            <h2 className="font-semibold">Follow up — estimates sent ≥ {followupDays} day{followupDays === 1 ? "" : "s"} ago</h2>
             <Link href="/estimates" className="text-sm text-brand-600 hover:underline">View all</Link>
           </header>
           {!followUpEstimates?.length ? (
@@ -140,7 +142,7 @@ export default async function DashboardPage() {
               {followUpEstimates.map((e: any) => (
                 <li key={e.id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <Link href={`/estimates/${e.id}`} className="font-medium hover:text-brand-700">{e.estimate_number}</Link>
+                    <Link href={`/estimates/${e.id}`} className="font-medium hover:text-brand-700">{documentLabel("estimate", e.status, e.estimate_number)}</Link>
                     <p className="text-xs text-gray-500 truncate">{customerDisplayName(e.customers ?? {})}</p>
                   </div>
                   <div className="text-right">

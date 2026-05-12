@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { WorkflowState } from "@/lib/workflow";
+import { documentLabel } from "@/lib/document-number";
 
 type StepState = "done" | "current" | "pending" | "skipped";
 
@@ -75,10 +76,14 @@ function buildSteps(w: WorkflowState): Step[] {
   const jobHref = w.jobId ? `/jobs/${w.jobId}` : undefined;
   const invoiceHref = w.invoiceId ? `/invoices/${w.invoiceId}` : undefined;
 
+  const estimateDetail = w.estimateNumber ? documentLabel("estimate", w.estimateStatus, w.estimateNumber) : undefined;
+  const jobDetail = w.estimateNumber ? documentLabel("job", w.jobStatus, w.estimateNumber) : undefined;
+  const invoiceDetail = w.invoiceNumber ? documentLabel("invoice", w.invoiceStatus, w.invoiceNumber) : undefined;
+
   // Step 1: Estimate created
   const estimateCreated: Step = {
     label: "Estimate created",
-    detail: w.estimateNumber ?? undefined,
+    detail: estimateDetail,
     state: w.estimateId ? "done" : "current",
     href: estimateHref,
   };
@@ -112,6 +117,7 @@ function buildSteps(w: WorkflowState): Step[] {
   // Step 4: Job created
   const jobCreated: Step = {
     label: "Job created",
+    detail: jobDetail,
     state: w.jobId ? "done" : declinedShortCircuit ? "skipped" : w.estimateAccepted ? "current" : "pending",
     href: jobHref,
   };
@@ -141,7 +147,7 @@ function buildSteps(w: WorkflowState): Step[] {
   // Step 7: Invoice created
   const invoiceCreated: Step = {
     label: "Invoice created",
-    detail: w.invoiceNumber ?? undefined,
+    detail: invoiceDetail,
     state: w.invoiceId ? "done" : w.jobCompleted ? "current" : "pending",
     href: invoiceHref,
   };

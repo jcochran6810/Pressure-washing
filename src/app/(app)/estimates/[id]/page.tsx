@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer } from "../actions";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { WorkflowStepper } from "@/components/workflow-stepper";
@@ -45,7 +46,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
       <Link href="/estimates" className="text-sm text-brand-600 hover:underline">← Estimates</Link>
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-5">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{est.estimate_number}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">{documentLabel("estimate", est.status, est.estimate_number)}</h1>
           <span className={`badge mt-1 ${statusColor(est.status)}`}>{est.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">

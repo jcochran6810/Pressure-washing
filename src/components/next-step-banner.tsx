@@ -3,7 +3,7 @@ import type { WorkflowState } from "@/lib/workflow";
 import { CopyButton } from "./copy-button";
 import { setEstimateStatus, emailEstimateToCustomer } from "@/app/(app)/estimates/actions";
 import { setJobStatus, scheduleJob } from "@/app/(app)/jobs/actions";
-import { emailInvoiceToCustomer, recordPayment } from "@/app/(app)/invoices/actions";
+import { emailInvoiceToCustomer, recordPayment, sendReceiptToCustomer } from "@/app/(app)/invoices/actions";
 
 export function NextStepBanner({
   workflow,
@@ -198,15 +198,16 @@ export function NextStepBanner({
 
   // Step 11 fallback: paid but no receipt logged yet (rare — receipt sends automatically on payment record)
   if (workflow.invoicePaid && !workflow.receiptSent) {
-    const emailInv = workflow.invoiceId ? emailInvoiceToCustomer.bind(null, workflow.invoiceId) : null;
+    const sendReceipt = workflow.invoiceId ? sendReceiptToCustomer.bind(null, workflow.invoiceId) : null;
     return (
       <Banner tone="primary" eyebrow="Last step" title="Send the receipt">
         <p className="text-sm text-gray-700 mb-3">Send the customer a copy stamped PAID.</p>
-        {emailInv && (
-          <form action={emailInv}>
-            <button className="btn-primary text-base px-5 py-3">✉ Send receipt</button>
+        {sendReceipt && (
+          <form action={sendReceipt}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>✉ Send receipt</button>
           </form>
         )}
+        {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable sending.</p>}
       </Banner>
     );
   }

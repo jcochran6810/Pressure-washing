@@ -37,12 +37,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div><label>State</label><input name="state" defaultValue={organization?.state ?? ""} className="w-full" /></div>
             <div><label>Zip</label><input name="postal_code" defaultValue={organization?.postal_code ?? ""} className="w-full" /></div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div><label>Tax rate</label><input name="tax_rate" type="number" step="0.0001" defaultValue={organization?.tax_rate ?? 0} className="w-full" /></div>
             <div><label>Currency</label><input name="currency" defaultValue={organization?.currency ?? "USD"} className="w-full" /></div>
-            <div><label>Invoice prefix</label><input name="invoice_prefix" defaultValue={organization?.invoice_prefix ?? "INV"} className="w-full" /></div>
-            <div><label>Estimate prefix</label><input name="estimate_prefix" defaultValue={organization?.estimate_prefix ?? "EST"} className="w-full" /></div>
           </div>
+          <p className="text-xs text-gray-500">
+            Document numbers are shared across the lifecycle: a quote starts as
+            <code className="mx-1 px-1 rounded bg-gray-100">EST-26-1032</code>, becomes
+            <code className="mx-1 px-1 rounded bg-gray-100">JOB-26-1032</code> on customer approval,
+            <code className="mx-1 px-1 rounded bg-gray-100">INVOICE-26-1032</code> when the job is completed,
+            and <code className="mx-1 px-1 rounded bg-gray-100">RECEIPT-26-1032</code> once paid. The number
+            increments each new estimate and the year prefix rolls over Jan 1.
+          </p>
 
           <h3 className="font-semibold mt-2">Reminders & reviews</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -63,6 +69,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div>
               <label>Recurring service reminder (months)</label>
               <input name="recurring_reminder_months" type="number" min="0" defaultValue={organization?.recurring_reminder_months ?? 12} className="w-full" />
+            </div>
+            <div>
+              <label>Follow up on sent estimates after (days)</label>
+              <input name="estimate_followup_days" type="number" min="0" defaultValue={organization?.estimate_followup_days ?? 3} className="w-full" />
+              <p className="text-xs text-gray-500 mt-1">Estimates sent at least this long ago without a response show up in the dashboard follow-up list.</p>
             </div>
           </div>
 

@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { sendEmail, receiptHtml } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
+import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -30,14 +31,6 @@ function parseLineItems(formData: FormData): LineItem[] {
   return out;
 }
 
-async function nextInvoiceNumber(orgId: string, supabase: any) {
-  const { data: org } = await supabase.from("organizations").select("next_invoice_number, invoice_prefix").eq("id", orgId).single();
-  const num = org?.next_invoice_number ?? 1000;
-  const prefix = org?.invoice_prefix ?? "INV";
-  await supabase.from("organizations").update({ next_invoice_number: num + 1 }).eq("id", orgId);
-  return `${prefix}-${num}`;
-}
-
 export async function createInvoice(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const customer_id = String(formData.get("customer_id") || "");
@@ -54,7 +47,7 @@ export async function createInvoice(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const terms = String(formData.get("terms") || "").trim() || null;
 
-  const invoice_number = await nextInvoiceNumber(organizationId, supabase);
+  const invoice_number = await nextDocumentNumber(supabase, organizationId);
 
   const { data: inv, error } = await supabase
     .from("invoices")
@@ -128,7 +121,7 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
     const html = receiptHtml({
       orgName: org?.name ?? "Your Business",
       orgEmail: org?.email ?? null,
-      invoiceNumber: inv.invoice_number,
+      invoiceNumber: documentLabel("invoice", "paid", inv.invoice_number),
       customerName: customerDisplayName(cust),
       amount: formatCurrency(amount, org?.currency ?? "USD"),
       paymentMethod: payment_method,
@@ -139,7 +132,7 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
     });
     const result = await sendEmail({
       to: cust.email,
-      subject: `Receipt — Invoice ${inv.invoice_number}`,
+      subject: `Receipt — ${documentLabel("invoice", "paid", inv.invoice_number)}`,
       html,
       replyTo: org?.email ?? undefined,
     });
@@ -234,7 +227,12 @@ export async function createStripePaymentLink(invoiceId: string) {
 
   const link = await stripe.paymentLinks.create({
     line_items: priceIds,
-    metadata: { invoice_id: inv.id, organization_id: organizationId, invoice_number: inv.invoice_number },
+    metadata: {
+      invoice_id: inv.id,
+      organization_id: organizationId,
+      invoice_number: inv.invoice_number,
+      invoice_label: documentLabel("invoice", inv.status, inv.invoice_number),
+    },
   });
 
   await supabase.from("invoices").update({ stripe_payment_link: link.url }).eq("id", inv.id);
@@ -259,7 +257,7 @@ export async function saveInvoiceToDrive(id: string) {
   const html = invoiceHtml({
     org: organization,
     customer: inv.customers as any,
-    invoiceNumber: inv.invoice_number,
+    invoiceNumber: documentLabel("invoice", inv.status, inv.invoice_number),
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
     items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
@@ -302,7 +300,7 @@ export async function emailInvoiceToCustomer(id: string) {
   const docHtml = invoiceHtml({
     org: organization,
     customer: cust,
-    invoiceNumber: inv.invoice_number,
+    invoiceNumber: documentLabel("invoice", inv.status, inv.invoice_number),
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
     items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
@@ -323,9 +321,227 @@ export async function emailInvoiceToCustomer(id: string) {
       </body></html>${docHtml}`
     : docHtml;
 
-  const subject = inv.status === "paid" ? `Receipt — Invoice ${inv.invoice_number}` : `Invoice ${inv.invoice_number} from ${organization?.name}`;
+  const labelForSubject = documentLabel("invoice", inv.status, inv.invoice_number);
+  const subject = inv.status === "paid"
+    ? `Receipt — ${labelForSubject}`
+    : `${labelForSubject} from ${organization?.name}`;
   await sendEmail({ to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
   await setInvoiceStatus(id, inv.status === "draft" ? "sent" : inv.status);
+}
+
+/**
+ * Create a Stripe PaymentIntent for the in-app virtual terminal. The owner
+ * collects card details via Stripe Elements on the client; Stripe.js confirms
+ * the intent client-side with the returned client_secret. After success, the
+ * client calls confirmManualCardPayment to write the payment row.
+ */
+export async function createCardChargeIntent(
+  invoiceId: string,
+  amount: number,
+): Promise<{ clientSecret: string; intentId: string }> {
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe not configured. Set STRIPE_SECRET_KEY in .env.local.");
+  if (!(amount > 0)) throw new Error("Amount must be greater than 0.");
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("balance_due, invoice_number, customer_id, customers(email)")
+    .eq("id", invoiceId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!inv) throw new Error("Invoice not found");
+
+  const currency = (organization?.currency ?? "USD").toLowerCase();
+  const customerEmail = (inv.customers as any)?.email ?? undefined;
+
+  const intent = await stripe.paymentIntents.create({
+    amount: Math.round(amount * 100),
+    currency,
+    receipt_email: customerEmail,
+    description: `Manual card entry — ${documentLabel("invoice", null, inv.invoice_number)}`,
+    metadata: {
+      invoice_id: invoiceId,
+      organization_id: organizationId,
+      invoice_number: inv.invoice_number,
+      source: "manual_card_entry",
+    },
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+  });
+  if (!intent.client_secret) throw new Error("Stripe returned no client_secret.");
+  return { clientSecret: intent.client_secret, intentId: intent.id };
+}
+
+/**
+ * Called by the virtual-terminal client component after Stripe.js confirms the
+ * payment intent. Verifies with Stripe server-side, then writes the payment
+ * row + updates the invoice + sends the receipt — mirroring the recordPayment
+ * cash/check/ACH path.
+ */
+export async function confirmManualCardPayment(invoiceId: string, intentId: string) {
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe not configured.");
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+
+  const intent = await stripe.paymentIntents.retrieve(intentId);
+  if (intent.status !== "succeeded") {
+    throw new Error(`Payment is not in succeeded state (status: ${intent.status}).`);
+  }
+  if (intent.metadata?.invoice_id !== invoiceId) {
+    throw new Error("Payment intent does not belong to this invoice.");
+  }
+
+  // Idempotency: bail if we've already recorded a payment for this intent.
+  const { data: existing } = await supabase
+    .from("payments")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("stripe_payment_intent_id", intentId)
+    .maybeSingle();
+  if (existing) {
+    revalidatePath(`/invoices/${invoiceId}`);
+    return;
+  }
+
+  const amount = (intent.amount ?? 0) / 100;
+  const lastChargeId = typeof (intent as any).latest_charge === "string" ? (intent as any).latest_charge : null;
+
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("total, amount_paid, invoice_number, customer_id, customers(first_name, last_name, company_name, email)")
+    .eq("id", invoiceId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!inv) throw new Error("Invoice not found.");
+
+  const { data: payment } = await supabase
+    .from("payments")
+    .insert({
+      organization_id: organizationId,
+      invoice_id: invoiceId,
+      customer_id: inv.customer_id,
+      amount,
+      payment_method: "card",
+      payment_date: new Date().toISOString().slice(0, 10),
+      reference_number: lastChargeId ?? intentId,
+      notes: "Manual card entry (virtual terminal)",
+      stripe_payment_intent_id: intentId,
+    })
+    .select("id")
+    .single();
+
+  const new_paid = Number(inv.amount_paid ?? 0) + amount;
+  const balance = Math.max(0, Number(inv.total ?? 0) - new_paid);
+  const status = balance === 0 ? "paid" : "partial";
+  const patch: any = { amount_paid: new_paid, balance_due: balance, status };
+  if (status === "paid") patch.paid_at = new Date().toISOString();
+  await supabase.from("invoices").update(patch).eq("id", invoiceId);
+
+  // Send PAID receipt if customer has email
+  const cust: any = inv.customers;
+  if (cust?.email) {
+    const currency = organization?.currency ?? "USD";
+    const html = receiptHtml({
+      orgName: organization?.name ?? "Your Business",
+      orgEmail: organization?.email ?? null,
+      invoiceNumber: documentLabel("invoice", status, inv.invoice_number),
+      customerName: customerDisplayName(cust),
+      amount: formatCurrency(amount, currency),
+      paymentMethod: "card",
+      paymentDate: formatDate(new Date()),
+      total: formatCurrency(Number(inv.total), currency),
+      remainingBalance: formatCurrency(balance, currency),
+      fullyPaid: balance === 0,
+    });
+    const result = await sendEmail({
+      to: cust.email,
+      subject: `Receipt — ${documentLabel("invoice", status, inv.invoice_number)}`,
+      html,
+      replyTo: organization?.email ?? undefined,
+    });
+    if (result.ok) {
+      await supabase.from("receipt_log").insert({
+        organization_id: organizationId,
+        invoice_id: invoiceId,
+        payment_id: payment?.id ?? null,
+        customer_id: inv.customer_id,
+        email_to: cust.email,
+        provider: "resend",
+        provider_id: result.id ?? null,
+        status: "sent",
+      });
+    }
+  }
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/payments");
+}
+
+/**
+ * Send a "PAID" stamped receipt email to the customer and log it to
+ * receipt_log so the workflow shows the receipt step as complete.
+ *
+ * Used by the "Send receipt" next-step banner button. Unlike
+ * emailInvoiceToCustomer, this always uses the receipt template
+ * (not the invoice template) and always writes to receipt_log so the
+ * workflow flag flips to "Receipt sent".
+ */
+export async function sendReceiptToCustomer(invoiceId: string) {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("invoice_number, total, amount_paid, balance_due, status, customer_id, customers(first_name, last_name, company_name, email)")
+    .eq("id", invoiceId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!inv) throw new Error("Invoice not found");
+  const cust: any = inv.customers;
+  if (!cust?.email) throw new Error("Customer has no email on file.");
+
+  const { data: lastPayment } = await supabase
+    .from("payments")
+    .select("amount, payment_method, payment_date")
+    .eq("invoice_id", invoiceId)
+    .eq("organization_id", organizationId)
+    .order("payment_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const currency = organization?.currency ?? "USD";
+  const total = Number(inv.total ?? 0);
+  const paid = Number(inv.amount_paid ?? 0);
+  const balance = Number(inv.balance_due ?? 0);
+  const html = receiptHtml({
+    orgName: organization?.name ?? "Your Business",
+    orgEmail: organization?.email ?? null,
+    invoiceNumber: documentLabel("invoice", "paid", inv.invoice_number),
+    customerName: customerDisplayName(cust),
+    amount: formatCurrency(lastPayment?.amount ? Number(lastPayment.amount) : paid, currency),
+    paymentMethod: String(lastPayment?.payment_method ?? "—"),
+    paymentDate: formatDate(lastPayment?.payment_date ?? new Date()),
+    total: formatCurrency(total, currency),
+    remainingBalance: formatCurrency(balance, currency),
+    fullyPaid: balance === 0,
+  });
+
+  const result = await sendEmail({
+    to: cust.email,
+    subject: `Receipt — ${documentLabel("invoice", "paid", inv.invoice_number)}`,
+    html,
+    replyTo: organization?.email ?? undefined,
+  });
+  if (!result.ok) {
+    throw new Error(`Failed to send receipt: ${result.reason ?? "email not configured"}`);
+  }
+  await supabase.from("receipt_log").insert({
+    organization_id: organizationId,
+    invoice_id: invoiceId,
+    customer_id: inv.customer_id,
+    email_to: cust.email,
+    provider: "resend",
+    provider_id: result.id ?? null,
+    status: "sent",
+  });
+  revalidatePath(`/invoices/${invoiceId}`);
 }
 
 export async function deleteInvoice(id: string) {

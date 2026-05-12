@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader, EmptyState } from "@/components/page-header";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function EstimatesPage() {
           <tbody>
             {data.map((e: any) => (
               <tr key={e.id}>
-                <td><Link href={`/estimates/${e.id}`} className="font-medium hover:text-brand-700">{e.estimate_number}</Link></td>
+                <td><Link href={`/estimates/${e.id}`} className="font-medium hover:text-brand-700">{documentLabel("estimate", e.status, e.estimate_number)}</Link></td>
                 <td>{customerDisplayName(e.customers ?? {})}</td>
                 <td className="hidden sm:table-cell text-gray-500">{formatDate(e.issue_date)}</td>
                 <td className="font-medium">{formatCurrency(Number(e.total))}</td>

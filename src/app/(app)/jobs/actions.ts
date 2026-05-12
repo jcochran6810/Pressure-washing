@@ -1,6 +1,8 @@
 "use server";
 
 import { getSessionAndOrg } from "@/lib/org";
+import { nextDocumentNumber } from "@/lib/document-number";
+import { emailInvoiceToCustomer } from "@/app/(app)/invoices/actions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -66,14 +68,27 @@ export async function setJobStatus(id: string, status: string) {
     if (!existing) {
       const { data: job } = await supabase
         .from("jobs")
-        .select("customer_id, estimate_id, total_amount, title")
+        .select("customer_id, estimate_id, total_amount, title, job_number")
         .eq("id", id)
         .eq("organization_id", organizationId)
         .single();
       if (job) {
-        const invoice_number = await nextInvoiceNumber(supabase, organizationId);
+        // Inherit the existing document number from the estimate (preferred) or
+        // the job itself; only mint a fresh one for standalone jobs.
+        let invoice_number: string | null = null;
+        if (job.estimate_id) {
+          const { data: estForNumber } = await supabase
+            .from("estimates")
+            .select("estimate_number")
+            .eq("id", job.estimate_id)
+            .single();
+          invoice_number = estForNumber?.estimate_number ?? null;
+        }
+        if (!invoice_number) invoice_number = job.job_number ?? null;
+        if (!invoice_number) invoice_number = await nextDocumentNumber(supabase, organizationId);
         const due = new Date(); due.setDate(due.getDate() + 14);
 
+        let createdInvoiceId: string | null = null;
         if (job.estimate_id) {
           const { data: est } = await supabase
             .from("estimates")
@@ -103,6 +118,7 @@ export async function setJobStatus(id: string, status: string) {
               })
               .select("id")
               .single();
+            createdInvoiceId = inv?.id ?? null;
             if (inv && est.estimate_line_items?.length) {
               await supabase.from("invoice_line_items").insert(
                 est.estimate_line_items.map((li: any) => ({
@@ -135,6 +151,7 @@ export async function setJobStatus(id: string, status: string) {
             })
             .select("id")
             .single();
+          createdInvoiceId = inv?.id ?? null;
           if (inv && amount > 0) {
             await supabase.from("invoice_line_items").insert([{
               invoice_id: inv.id,
@@ -146,6 +163,17 @@ export async function setJobStatus(id: string, status: string) {
             }]);
           }
         }
+
+        // Auto-email the freshly drafted invoice to the customer. If the
+        // customer has no email on file or Resend isn't configured, swallow
+        // the error — the invoice stays in draft for the owner to handle.
+        if (createdInvoiceId) {
+          try {
+            await emailInvoiceToCustomer(createdInvoiceId);
+          } catch (e) {
+            console.error("Auto-email of invoice on job complete failed:", e);
+          }
+        }
       }
     }
   }
@@ -153,18 +181,6 @@ export async function setJobStatus(id: string, status: string) {
   revalidatePath("/jobs");
   revalidatePath(`/jobs/${id}`);
   revalidatePath("/invoices");
-}
-
-async function nextInvoiceNumber(supabase: any, organizationId: string) {
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("next_invoice_number, invoice_prefix")
-    .eq("id", organizationId)
-    .single();
-  const num = org?.next_invoice_number ?? 1000;
-  const prefix = org?.invoice_prefix ?? "INV";
-  await supabase.from("organizations").update({ next_invoice_number: num + 1 }).eq("id", organizationId);
-  return `${prefix}-${num}`;
 }
 
 export async function scheduleJob(id: string, formData: FormData) {

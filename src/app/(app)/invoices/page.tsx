@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader, EmptyState } from "@/components/page-header";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           <tbody>
             {data.map((i: any) => (
               <tr key={i.id}>
-                <td><Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{i.invoice_number}</Link></td>
+                <td><Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{documentLabel("invoice", i.status, i.invoice_number)}</Link></td>
                 <td>{customerDisplayName(i.customers ?? {})}</td>
                 <td className="hidden sm:table-cell text-gray-500">{formatDate(i.issue_date)}</td>
                 <td className="hidden sm:table-cell text-gray-500">{formatDate(i.due_date)}</td>

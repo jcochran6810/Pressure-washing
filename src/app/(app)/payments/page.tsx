@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader, EmptyState } from "@/components/page-header";
 import { customerDisplayName, formatCurrency, formatDate } from "@/lib/utils";
+import { documentLabel } from "@/lib/document-number";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export default async function PaymentsPage() {
   const { supabase, organizationId } = await getSessionAndOrg();
   const { data } = await supabase
     .from("payments")
-    .select("id, amount, payment_method, payment_date, reference_number, customers(first_name, last_name, company_name), invoices(id, invoice_number)")
+    .select("id, amount, payment_method, payment_date, reference_number, customers(first_name, last_name, company_name), invoices(id, invoice_number, status)")
     .eq("organization_id", organizationId)
     .order("payment_date", { ascending: false });
 
@@ -37,7 +38,7 @@ export default async function PaymentsPage() {
               <tr key={p.id}>
                 <td>{formatDate(p.payment_date)}</td>
                 <td>{customerDisplayName(p.customers ?? {})}</td>
-                <td>{p.invoices ? <Link href={`/invoices/${p.invoices.id}`} className="hover:text-brand-700">{p.invoices.invoice_number}</Link> : "—"}</td>
+                <td>{p.invoices ? <Link href={`/invoices/${p.invoices.id}`} className="hover:text-brand-700">{documentLabel("invoice", p.invoices.status, p.invoices.invoice_number)}</Link> : "—"}</td>
                 <td className="capitalize">{p.payment_method}</td>
                 <td className="text-gray-600">{p.reference_number || "—"}</td>
                 <td className="text-right font-medium">{formatCurrency(Number(p.amount))}</td>

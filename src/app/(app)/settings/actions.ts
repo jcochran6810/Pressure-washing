@@ -17,12 +17,11 @@ export async function updateOrganization(formData: FormData) {
     postal_code: String(formData.get("postal_code") || "").trim() || null,
     tax_rate: Number(formData.get("tax_rate") || 0),
     currency: String(formData.get("currency") || "USD"),
-    invoice_prefix: String(formData.get("invoice_prefix") || "INV"),
-    estimate_prefix: String(formData.get("estimate_prefix") || "EST"),
     google_review_url: String(formData.get("google_review_url") || "").trim() || null,
     review_request_enabled: formData.get("review_request_enabled") === "on",
     appointment_reminder_hours: Number(formData.get("appointment_reminder_hours") || 24),
     recurring_reminder_months: Number(formData.get("recurring_reminder_months") || 12),
+    estimate_followup_days: Number(formData.get("estimate_followup_days") || 3),
     updated_at: new Date().toISOString(),
   }).eq("id", organizationId);
   revalidatePath("/settings");

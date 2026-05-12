@@ -4,18 +4,11 @@ import { getSessionAndOrg } from "@/lib/org";
 import { sendEmail } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
+import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
-
-async function nextNumber(prefix: string, orgId: string, supabase: any, field: "next_estimate_number" | "next_invoice_number") {
-  const { data: org } = await supabase.from("organizations").select(`${field}, ${field === "next_estimate_number" ? "estimate_prefix" : "invoice_prefix"}`).eq("id", orgId).single();
-  const current = org?.[field] ?? 1000;
-  const p = prefix || org?.[field === "next_estimate_number" ? "estimate_prefix" : "invoice_prefix"] || (field === "next_estimate_number" ? "EST" : "INV");
-  await supabase.from("organizations").update({ [field]: current + 1 }).eq("id", orgId);
-  return `${p}-${current}`;
-}
 
 function parseLineItems(formData: FormData): LineItem[] {
   const descs = formData.getAll("li_description") as string[];
@@ -79,7 +72,7 @@ export async function createEstimate(formData: FormData) {
   const depositPct = Number(organization?.deposit_percentage ?? 0.25);
   const deposit_amount = depositThreshold > 0 && total >= depositThreshold ? Math.round(total * depositPct * 100) / 100 : null;
 
-  const estimate_number = await nextNumber("EST", organizationId, supabase, "next_estimate_number");
+  const estimate_number = await nextDocumentNumber(supabase, organizationId);
   const approval_token = crypto.randomUUID().replace(/-/g, "");
 
   const { data: est, error } = await supabase
@@ -152,7 +145,8 @@ async function ensureJobForEstimate(estimateId: string, jobStatus: "scheduled" |
     customer_id: est.customer_id,
     property_id: est.property_id,
     estimate_id: estimateId,
-    title: `Job from ${est.estimate_number}`,
+    job_number: est.estimate_number,
+    title: `Job from ${documentLabel("estimate", null, est.estimate_number)}`,
     description: est.notes,
     status: jobStatus,
     total_amount: est.total,
@@ -176,7 +170,8 @@ export async function convertEstimateToInvoice(estimateId: string) {
     .single();
   if (!est) throw new Error("Estimate not found");
 
-  const invoice_number = await nextNumber("INV", organizationId, supabase, "next_invoice_number");
+  // Invoice inherits the estimate's bare number so EST-26-1032 -> INVOICE-26-1032 -> RECEIPT-26-1032.
+  const invoice_number = est.estimate_number;
   const due_date = new Date();
   due_date.setDate(due_date.getDate() + 14);
 
@@ -274,7 +269,7 @@ export async function emailEstimateToCustomer(id: string) {
   if (!cust?.email) throw new Error("Customer has no email.");
   await sendEmail({
     to: cust.email,
-    subject: `Estimate ${est.estimate_number} from ${organization?.name}`,
+    subject: `Estimate ${documentLabel("estimate", est.status, est.estimate_number)} from ${organization?.name}`,
     html: estimateDocHtml(organization, est),
     replyTo: organization?.email ?? undefined,
   });
