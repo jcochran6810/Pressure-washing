@@ -41,7 +41,18 @@ export async function saveMeasurements(formData: FormData) {
   }
 
   revalidatePath("/measure");
-  if (property_id) redirect(`/customers`);
+  // If we measured for a specific property, jump straight into building an
+  // estimate where the line items are pre-filled from these measurements.
+  if (property_id) {
+    const { data: prop } = await supabase
+      .from("properties")
+      .select("customer_id")
+      .eq("id", property_id)
+      .single();
+    if (prop?.customer_id) {
+      redirect(`/estimates/new?customer=${prop.customer_id}&property=${property_id}&from_measurements=1`);
+    }
+  }
   redirect("/measure");
 }
 
