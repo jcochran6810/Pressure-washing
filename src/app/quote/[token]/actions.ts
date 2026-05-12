@@ -15,14 +15,10 @@ function publicClient() {
 export async function approveQuote(token: string, formData: FormData) {
   const supabase = publicClient();
   const signature = String(formData.get("signature") || "").trim();
-  await supabase
-    .from("estimates")
-    .update({
-      status: "accepted",
-      accepted_at: new Date().toISOString(),
-      approval_message: signature ? `Signed by ${signature}` : null,
-    })
-    .eq("approval_token", token);
+  await supabase.rpc("accept_estimate_by_token", {
+    p_token: token,
+    p_signature: signature || null,
+  });
   revalidatePath(`/quote/${token}`);
   redirect(`/quote/${token}`);
 }

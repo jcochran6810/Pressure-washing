@@ -39,17 +39,21 @@ export function AppShell({
   orgName,
   userEmail,
   isDemo,
+  badges,
 }: {
   children: React.ReactNode;
   orgName: string;
   userEmail: string;
   isDemo?: boolean;
+  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
+
+  const badgeFor = (href: string) => badges?.[href] ?? 0;
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
@@ -60,21 +64,25 @@ export function AppShell({
           <span className="truncate">{orgName}</span>
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium",
-                isActive(item.href)
-                  ? "bg-brand-50 text-brand-700"
-                  : "text-gray-700 hover:bg-gray-100",
-              )}
-            >
-              <span className="w-5 text-center text-gray-400">{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
+          {NAV.map((item) => {
+            const count = badgeFor(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium",
+                  isActive(item.href)
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-gray-700 hover:bg-gray-100",
+                )}
+              >
+                <span className="w-5 text-center text-gray-400">{item.icon}</span>
+                <span className="flex-1">{item.label}</span>
+                {count > 0 && <NavBadge count={count} />}
+              </Link>
+            );
+          })}
         </nav>
         <div className="p-3 border-t text-xs text-gray-500">
           <div className="truncate mb-2">{userEmail}</div>
@@ -113,22 +121,26 @@ export function AppShell({
               <button onClick={() => setMobileOpen(false)} className="p-2 -mr-2" aria-label="Close menu">✕</button>
             </div>
             <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium",
-                    isActive(item.href)
-                      ? "bg-brand-50 text-brand-700"
-                      : "text-gray-700 hover:bg-gray-100",
-                  )}
-                >
-                  <span className="w-5 text-center text-gray-400">{item.icon}</span>
-                  {item.label}
-                </Link>
-              ))}
+              {NAV.map((item) => {
+                const count = badgeFor(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium",
+                      isActive(item.href)
+                        ? "bg-brand-50 text-brand-700"
+                        : "text-gray-700 hover:bg-gray-100",
+                    )}
+                  >
+                    <span className="w-5 text-center text-gray-400">{item.icon}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {count > 0 && <NavBadge count={count} />}
+                  </Link>
+                );
+              })}
             </nav>
             <div className="p-3 border-t text-xs text-gray-500">
               <div className="truncate mb-2">{userEmail}</div>
@@ -155,20 +167,38 @@ export function AppShell({
 
       {/* Mobile bottom tabs */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 grid grid-cols-4">
-        {MOBILE_TABS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex flex-col items-center justify-center py-2 text-xs font-medium",
-              isActive(item.href) ? "text-brand-600" : "text-gray-500",
-            )}
-          >
-            <span className="text-lg leading-none">{item.icon}</span>
-            <span className="mt-0.5">{item.label}</span>
-          </Link>
-        ))}
+        {MOBILE_TABS.map((item) => {
+          const count = badgeFor(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "relative flex flex-col items-center justify-center py-2 text-xs font-medium",
+                isActive(item.href) ? "text-brand-600" : "text-gray-500",
+              )}
+            >
+              <span className="relative text-lg leading-none">
+                {item.icon}
+                {count > 0 && (
+                  <span className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-[18px] text-center">
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+              </span>
+              <span className="mt-0.5">{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
     </div>
+  );
+}
+
+function NavBadge({ count }: { count: number }) {
+  return (
+    <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-semibold leading-none">
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
