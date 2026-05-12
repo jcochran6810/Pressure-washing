@@ -3,8 +3,9 @@
 import { getSessionAndOrg } from "@/lib/org";
 import { sendEmail } from "@/lib/email";
 import { sendSMS, bestCustomerPhone, isSMSConfigured } from "@/lib/sms";
-import { uploadHtmlToDrive } from "@/lib/drive-uploader";
+import { uploadHtmlToDrive, uploadPdfToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
+import { estimatePdfBuffer } from "@/lib/document-pdf";
 import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -320,11 +321,34 @@ function estimateDocHtml(organization: any, est: any) {
 
 export async function saveEstimateToDrive(id: string) {
   const { organizationId, organization, est } = await loadEstimateForDoc(id);
-  await uploadHtmlToDrive({
+  const items = (est.estimate_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const label = documentLabel("estimate", est.status, est.estimate_number);
+  const pdf = await estimatePdfBuffer({
+    org: organization,
+    customer: est.customers as any,
+    estimateNumber: label,
+    issueDate: est.issue_date,
+    expiresAt: est.expires_at,
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+    })),
+    subtotal: Number(est.subtotal),
+    discount: Number(est.discount_amount),
+    taxRate: Number(est.tax_rate),
+    tax: Number(est.tax_amount),
+    total: Number(est.total),
+    notes: est.notes,
+    terms: est.terms,
+    currency: organization?.currency,
+  });
+  await uploadPdfToDrive({
     organization_id: organizationId,
     folder: "estimates_folder_id",
-    name: `${est.estimate_number}.html`,
-    html: estimateDocHtml(organization, est),
+    name: `${label}.pdf`,
+    pdf,
   });
   revalidatePath(`/estimates/${id}`);
 }

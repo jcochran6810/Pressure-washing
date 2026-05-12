@@ -76,7 +76,8 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
           <span className={`badge mt-1 ${statusColor(est.status)}`}>{est.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href={`/api/documents/estimates/${est.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
+          <a href={`/api/documents/estimates/${est.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View PDF</a>
+          <a href={`/api/documents/estimates/${est.id}/pdf?download=1`} className="btn-secondary">Download PDF</a>
           <form action={emailEst}><button className="btn-secondary" disabled={!(est.customers as any)?.email}>Email to customer</button></form>
           {smsConfigured && (
             <form action={smsEst}><button className="btn-secondary" disabled={!hasPhone}>Send via SMS</button></form>

@@ -99,7 +99,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
+          <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View PDF</a>
+          <a href={`/api/documents/invoices/${inv.id}/pdf?download=1`} className="btn-secondary">Download PDF</a>
           <form action={emailInv}><button className="btn-secondary" disabled={!(inv.customers as any)?.email}>Email to customer</button></form>
           {smsConfigured && (
             <form action={smsInv}><button className="btn-secondary" disabled={!invHasPhone}>Send via SMS</button></form>

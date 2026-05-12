@@ -4,8 +4,9 @@ import { getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
 import { sendEmail, receiptHtml } from "@/lib/email";
 import { sendSMS, bestCustomerPhone, isSMSConfigured } from "@/lib/sms";
-import { uploadHtmlToDrive } from "@/lib/drive-uploader";
+import { uploadHtmlToDrive, uploadPdfToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
+import { invoicePdfBuffer } from "@/lib/document-pdf";
 import { nextDocumentNumber, documentLabel } from "@/lib/document-number";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -340,24 +341,38 @@ async function loadInvoiceForDoc(id: string) {
 export async function saveInvoiceToDrive(id: string) {
   const { organizationId, organization, inv } = await loadInvoiceForDoc(id);
   const items = (inv.invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const html = invoiceHtml({
+  const paid = inv.status === "paid";
+  const label = documentLabel("invoice", inv.status, inv.invoice_number);
+  const pdf = await invoicePdfBuffer({
     org: organization,
     customer: inv.customers as any,
-    invoiceNumber: documentLabel("invoice", inv.status, inv.invoice_number),
+    invoiceNumber: label,
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
-    subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
-    tax: Number(inv.tax_amount), total: Number(inv.total),
-    amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
-    notes: inv.notes, terms: inv.terms, paid: inv.status === "paid",
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+    })),
+    subtotal: Number(inv.subtotal),
+    discount: Number(inv.discount_amount),
+    taxRate: Number(inv.tax_rate),
+    tax: Number(inv.tax_amount),
+    total: Number(inv.total),
+    amountPaid: Number(inv.amount_paid),
+    balanceDue: Number(inv.balance_due),
+    notes: inv.notes,
+    terms: inv.terms,
+    paid,
     currency: organization?.currency,
   });
-  await uploadHtmlToDrive({
+  await uploadPdfToDrive({
     organization_id: organizationId,
-    folder: "invoices_folder_id",
-    name: `${inv.invoice_number}.html`,
-    html,
+    // Paid invoices land in the receipts folder; everything else in invoices.
+    folder: paid ? "receipts_folder_id" : "invoices_folder_id",
+    name: `${label}.pdf`,
+    pdf,
   });
   revalidatePath(`/invoices/${id}`);
 }

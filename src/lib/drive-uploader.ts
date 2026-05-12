@@ -41,3 +41,24 @@ export async function uploadHtmlToDrive(opts: {
     body: opts.html,
   });
 }
+
+export async function uploadPdfToDrive(opts: {
+  organization_id: string;
+  folder: "invoices_folder_id" | "estimates_folder_id" | "photos_folder_id" | "receipts_folder_id";
+  name: string;
+  pdf: Buffer | Uint8Array;
+}) {
+  const t = await getDriveAccessToken(opts.organization_id);
+  if (!t) throw new Error("Drive not connected for this organization.");
+  const parent = (t.conn as any)[opts.folder] as string | undefined;
+  if (!parent) throw new Error("Drive folder missing — reconnect.");
+  // Google Drive multipart upload accepts ArrayBuffer-compatible payloads.
+  const body = opts.pdf instanceof Uint8Array ? opts.pdf.buffer : opts.pdf;
+  return uploadFile({
+    access_token: t.token,
+    parentFolderId: parent,
+    name: opts.name,
+    mimeType: "application/pdf",
+    body: body as ArrayBuffer,
+  });
+}
