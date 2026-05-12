@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, updateInvoice, smsInvoiceToCustomer } from "../actions";
+import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, updateInvoice, smsInvoiceToCustomer, sendReceiptToCustomer } from "../actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { CardChargeForm } from "@/components/card-charge-form";
@@ -27,15 +27,42 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const { data: payments } = await supabase.from("payments").select("*").eq("invoice_id", id).order("payment_date", { ascending: false });
 
+  // Invoices/receipts can be edited in any status (draft, sent, partial,
+  // paid, overdue). Receipts (status=paid) preserve recorded payment amounts;
+  // only totals and metadata change.
   const isDraft = inv.status === "draft";
-  // Load the services catalog + invoice photos only when editing is possible.
-  const [{ data: services }, { data: invoicePhotos }] = await Promise.all([
-    isDraft
-      ? supabase.from("services").select("id, name, default_price").eq("organization_id", organizationId).eq("active", true).order("name")
-      : Promise.resolve({ data: [] as any[] }),
-    supabase.from("photo_attachments").select("*").eq("invoice_id", id).order("created_at", { ascending: false }),
+  const isReceipt = inv.status === "paid";
+  const [{ data: services }, { data: invoicePhotos }, { data: lastReceiptRow }] = await Promise.all([
+    supabase
+      .from("services")
+      .select("id, name, default_price")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .order("name"),
+    supabase
+      .from("photo_attachments")
+      .select("*")
+      .eq("invoice_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("receipt_log")
+      .select("sent_at")
+      .eq("invoice_id", id)
+      .eq("organization_id", organizationId)
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
+
+  // "Modified since last send": drives the orange Re-send banner.
+  const sentAt = inv.sent_at ? new Date(inv.sent_at) : null;
+  const updatedAt = inv.updated_at ? new Date(inv.updated_at) : null;
+  const receiptSentAt = lastReceiptRow?.sent_at ? new Date(lastReceiptRow.sent_at) : null;
+  // For receipts, compare against the latest receipt_log entry; for everything
+  // else, compare against the invoice's sent_at.
+  const compareAgainst = isReceipt ? receiptSentAt : sentAt;
+  const modifiedSinceSend = !!(compareAgainst && updatedAt && updatedAt.getTime() - compareAgainst.getTime() > 1000);
 
   const workflow = await loadWorkflow({ invoiceId: id });
 
@@ -49,6 +76,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const del = deleteInvoice.bind(null, inv.id);
   const editInv = updateInvoice.bind(null, inv.id);
   const smsInv = smsInvoiceToCustomer.bind(null, inv.id);
+  const reSendReceipt = sendReceiptToCustomer.bind(null, inv.id);
   const invCust: any = inv.customers;
   const invHasPhone = !!(invCust?.mobile_phone || invCust?.phone);
   const smsConfigured = Boolean(
@@ -95,6 +123,38 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         customerHasEmail={!!(inv.customers as any)?.email}
       />
 
+      {modifiedSinceSend && (
+        <div className="card-padded mb-4 border-orange-300 bg-orange-50">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-orange-900">
+                {isReceipt ? "Receipt modified since last sent" : "Invoice modified since last sent"}
+              </p>
+              <p className="text-xs text-orange-800 mt-0.5">
+                You've changed this {isReceipt ? "receipt" : "invoice"} since it was last sent to the customer.
+                Re-send so they have the updated copy.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {isReceipt ? (
+                <form action={reSendReceipt}>
+                  <button className="btn-primary text-sm" disabled={!invCust?.email}>✉ Re-send receipt</button>
+                </form>
+              ) : (
+                <form action={emailInv}>
+                  <button className="btn-primary text-sm" disabled={!invCust?.email}>✉ Re-send invoice</button>
+                </form>
+              )}
+              {smsConfigured && (
+                <form action={smsInv}>
+                  <button className="btn-secondary text-sm" disabled={!invHasPhone}>📱 Re-send SMS</button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card-padded mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <Field label="Customer" value={customerDisplayName(inv.customers as any)} />
@@ -104,77 +164,47 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      {isDraft ? (
-        <section className="card-padded mb-4 border-amber-300 ring-1 ring-amber-100">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <section className={`card-padded mb-4 ${isDraft ? "border-amber-300 ring-1 ring-amber-100" : ""}`}>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h2 className="font-semibold">
+              {isDraft ? "Review & edit before sending" : isReceipt ? "Edit receipt" : "Edit invoice"}
+            </h2>
+            <p className="text-xs text-gray-600">
+              {isDraft
+                ? "This invoice is in draft. Edit anything below — the customer hasn't seen it yet."
+                : isReceipt
+                  ? "Editing a paid receipt preserves the recorded payment amount. After saving, a Re-send button will appear so you can deliver the updated copy."
+                  : "After saving any change, a Re-send button will appear so you can deliver the updated copy to the customer."}
+            </p>
+          </div>
+        </div>
+        <form action={editInv}>
+          <LineItemEditor
+            services={(services as any) ?? []}
+            initial={initialItems}
+            taxRateInitial={Number(inv.tax_rate ?? 0)}
+            discountInitial={Number(inv.discount_amount ?? 0)}
+            organizationId={inv.organization_id}
+            mapsApiKey={mapsApiKey}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div>
-              <h2 className="font-semibold">Review &amp; edit before sending</h2>
-              <p className="text-xs text-gray-600">
-                This invoice is in draft. Adjust line items, photos, tax, discount, and notes here — the customer won't
-                see anything until you click <strong>Send invoice to customer</strong>.
-              </p>
+              <label>Notes (shown to customer)</label>
+              <textarea name="notes" rows={2} defaultValue={inv.notes ?? ""} className="w-full" />
+            </div>
+            <div>
+              <label>Terms (shown to customer)</label>
+              <textarea name="terms" rows={2} defaultValue={inv.terms ?? ""} className="w-full" />
             </div>
           </div>
-          <form action={editInv}>
-            <LineItemEditor
-              services={(services as any) ?? []}
-              initial={initialItems}
-              taxRateInitial={Number(inv.tax_rate ?? 0)}
-              discountInitial={Number(inv.discount_amount ?? 0)}
-              organizationId={inv.organization_id}
-              mapsApiKey={mapsApiKey}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <div>
-                <label>Notes (shown to customer)</label>
-                <textarea name="notes" rows={2} defaultValue={inv.notes ?? ""} className="w-full" />
-              </div>
-              <div>
-                <label>Terms (shown to customer)</label>
-                <textarea name="terms" rows={2} defaultValue={inv.terms ?? ""} className="w-full" />
-              </div>
-            </div>
-            <div className="flex justify-end mt-3">
-              <button className="btn-primary">Save changes</button>
-            </div>
-          </form>
-        </section>
-      ) : (
-        <div className="card mb-4 overflow-x-auto">
-          <table className="data-table">
-            <thead><tr><th>Description</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
-            <tbody>
-              {sortedItems.map((li) => (
-                <tr key={li.id}>
-                  <td>
-                    <div>{li.description}</div>
-                    {!!li.photo_urls?.length && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {li.photo_urls.map((u: string) => (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <a key={u} href={u} target="_blank" rel="noopener"><img src={u} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" /></a>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="text-right">{li.quantity}</td>
-                  <td className="text-right">{formatCurrency(Number(li.unit_price))}</td>
-                  <td className="text-right font-medium">{formatCurrency(Number(li.total))}</td>
-                </tr>
-              ))}
-              <tr><td colSpan={3} className="text-right text-gray-500">Subtotal</td><td className="text-right">{formatCurrency(Number(inv.subtotal))}</td></tr>
-              {Number(inv.discount_amount) > 0 && <tr><td colSpan={3} className="text-right text-gray-500">Discount</td><td className="text-right">− {formatCurrency(Number(inv.discount_amount))}</td></tr>}
-              <tr><td colSpan={3} className="text-right text-gray-500">Tax ({(Number(inv.tax_rate) * 100).toFixed(2)}%)</td><td className="text-right">{formatCurrency(Number(inv.tax_amount))}</td></tr>
-              <tr className="font-bold text-base"><td colSpan={3} className="text-right">Total</td><td className="text-right">{formatCurrency(Number(inv.total))}</td></tr>
-              <tr><td colSpan={3} className="text-right text-gray-500">Paid</td><td className="text-right">− {formatCurrency(Number(inv.amount_paid))}</td></tr>
-              <tr className="font-bold text-base text-brand-700"><td colSpan={3} className="text-right">Balance due</td><td className="text-right">{formatCurrency(Number(inv.balance_due))}</td></tr>
-            </tbody>
-          </table>
-        </div>
-      )}
+          <div className="flex justify-end mt-3">
+            <button className="btn-primary">Save changes</button>
+          </div>
+        </form>
+      </section>
 
-      {isDraft && (
-        <section className="card-padded mb-4">
+      <section className="card-padded mb-4">
           <h2 className="font-semibold mb-2">Invoice photos</h2>
           <p className="text-xs text-gray-600 mb-3">
             Photos here are attached to the invoice itself (e.g. final after-work shots) and visible alongside the line
@@ -191,7 +221,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <PhotoGallery photos={(invoicePhotos as any) ?? []} />
           </div>
         </section>
-      )}
 
       {inv.status !== "paid" && inv.status !== "void" && Number(inv.balance_due) > 0 && (
         <div className="card-padded mb-4 border-brand-300 ring-1 ring-brand-100">

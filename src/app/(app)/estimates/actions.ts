@@ -106,6 +106,71 @@ export async function createEstimate(formData: FormData) {
   redirect(`/estimates/${est.id}`);
 }
 
+/**
+ * Edit an estimate's line items, notes, terms, tax rate, and discount.
+ * Allowed in any status — when the estimate is no longer in draft, the
+ * detail page will surface a "Re-send to customer" CTA because updated_at
+ * will be more recent than sent_at.
+ */
+export async function updateEstimate(id: string, formData: FormData) {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const { data: existing } = await supabase
+    .from("estimates")
+    .select("status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!existing) throw new Error("Estimate not found");
+
+  const tax_rate = Number(formData.get("tax_rate") || 0);
+  const discount_amount = Number(formData.get("discount_amount") || 0);
+  const items = parseLineItems(formData);
+  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const globalMin = Number(organization?.global_min_job_price ?? 0);
+  if (globalMin > 0 && subtotal < globalMin) subtotal = globalMin;
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  const notes = String(formData.get("notes") || "").trim() || null;
+  const terms = String(formData.get("terms") || "").trim() || null;
+
+  const depositThreshold = Number(organization?.deposit_threshold ?? 0);
+  const depositPct = Number(organization?.deposit_percentage ?? 0.25);
+  const deposit_amount =
+    depositThreshold > 0 && total >= depositThreshold ? Math.round(total * depositPct * 100) / 100 : null;
+
+  await supabase
+    .from("estimates")
+    .update({
+      tax_rate,
+      discount_amount,
+      tax_amount,
+      subtotal,
+      total,
+      notes,
+      terms,
+      deposit_amount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  await supabase.from("estimate_line_items").delete().eq("estimate_id", id);
+  if (items.length) {
+    await supabase.from("estimate_line_items").insert(
+      items.map((i, idx) => ({
+        estimate_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
+    );
+  }
+  revalidatePath(`/estimates/${id}`);
+}
+
 export async function setEstimateStatus(id: string, status: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const patch: any = { status };

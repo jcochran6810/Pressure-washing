@@ -76,23 +76,25 @@ export async function createInvoice(formData: FormData) {
 }
 
 /**
- * Edit a draft invoice's line items, notes, terms, tax rate, and discount.
- * Only allowed while the invoice is in `draft` state — once sent, the line
- * items are frozen so the customer never sees an invoice change underneath
- * them. Replaces line items wholesale and recomputes totals.
+ * Edit an invoice's line items, notes, terms, tax rate, and discount.
+ * Allowed in any status — once a change is saved the invoice is flagged as
+ * "modified since last send" (by virtue of updated_at > sent_at) and the
+ * detail page surfaces a "Re-send to customer" call-to-action.
+ *
+ * For paid invoices, edits are intentionally permitted (e.g. to fix a typo
+ * in notes or a customer's address) but payment amounts and balance_due are
+ * preserved — we recompute the new total but keep amount_paid as-is and
+ * derive balance_due from the new total minus what's already been paid.
  */
 export async function updateInvoice(id: string, formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const { data: existing } = await supabase
     .from("invoices")
-    .select("status, stripe_payment_link")
+    .select("status, stripe_payment_link, amount_paid")
     .eq("id", id)
     .eq("organization_id", organizationId)
     .single();
   if (!existing) throw new Error("Invoice not found");
-  if (existing.status !== "draft") {
-    throw new Error("Only draft invoices can be edited. Mark this one as draft first if you need to make changes.");
-  }
 
   const tax_rate = Number(formData.get("tax_rate") || 0);
   const discount_amount = Number(formData.get("discount_amount") || 0);
@@ -103,21 +105,39 @@ export async function updateInvoice(id: string, formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const terms = String(formData.get("terms") || "").trim() || null;
 
+  const paid = Number(existing.amount_paid ?? 0);
+  const balance_due = Math.max(0, total - paid);
+
+  // If the total or items changed, the existing Stripe payment link is stale.
+  // Clear it so the next send regenerates it for the correct amount.
+  const patch: any = {
+    tax_rate,
+    discount_amount,
+    tax_amount,
+    subtotal,
+    total,
+    balance_due,
+    notes,
+    terms,
+    stripe_payment_link: null,
+    updated_at: new Date().toISOString(),
+  };
+  // If the paid amount now fully covers the (possibly new) total, mark paid.
+  // Conversely if a paid invoice was edited and the new total exceeds payment,
+  // demote to partial so the workflow makes sense again.
+  if (paid > 0) {
+    if (balance_due === 0) {
+      patch.status = "paid";
+      if (!existing.stripe_payment_link) patch.paid_at = new Date().toISOString();
+    } else if (existing.status === "paid") {
+      patch.status = "partial";
+      patch.paid_at = null;
+    }
+  }
+
   await supabase
     .from("invoices")
-    .update({
-      tax_rate,
-      discount_amount,
-      tax_amount,
-      subtotal,
-      total,
-      balance_due: total,
-      notes,
-      terms,
-      // If the total changed, the existing Stripe payment link is stale — clear it.
-      stripe_payment_link: existing.stripe_payment_link ? null : existing.stripe_payment_link,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", id)
     .eq("organization_id", organizationId);
 
