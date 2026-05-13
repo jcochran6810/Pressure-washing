@@ -74,5 +74,13 @@ export function PaymentsList({ rows }: { rows: PaymentRow[] }) {
     },
   ];
 
-  return <BulkActionTable rows={rows} columns={columns} actions={actions} itemNoun="receipt" />;
+  return (
+    <BulkActionTable
+      rows={rows}
+      columns={columns}
+      actions={actions}
+      itemNoun="receipt"
+      rowHref={(p) => (p.invoices ? `/invoices/${p.invoices.id}` : null)}
+    />
+  );
 }

@@ -82,5 +82,13 @@ export function InvoicesList({ rows }: { rows: InvoiceRow[] }) {
     },
   ];
 
-  return <BulkActionTable rows={rows} columns={columns} actions={actions} itemNoun="invoice" />;
+  return (
+    <BulkActionTable
+      rows={rows}
+      columns={columns}
+      actions={actions}
+      itemNoun="invoice"
+      rowHref={(i) => `/invoices/${i.id}`}
+    />
+  );
 }

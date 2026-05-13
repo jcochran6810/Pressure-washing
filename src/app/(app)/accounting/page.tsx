@@ -3,11 +3,13 @@ import { getSessionAndOrg } from "@/lib/org";
 import { formatDate } from "@/lib/utils";
 import { qboConfigured } from "@/lib/qbo";
 import { CsvDownloadForm } from "@/components/csv-download-form";
+import { DownloadAllForm } from "@/components/download-all-form";
 import {
   exportInvoicesCsv,
   exportPaymentsCsv,
   exportExpensesCsv,
   exportCustomersCsv,
+  exportAllCsvZip,
   pushAllUnsyncedInvoicesToQbo,
   disconnectQbo,
 } from "./actions";
@@ -73,6 +75,7 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
 
       <h2 className="font-semibold mb-2">CSV exports</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        <DownloadAllForm action={exportAllCsvZip} />
         <CsvDownloadForm
           action={exportInvoicesCsv}
           filename={`invoices-${stamp}.csv`}

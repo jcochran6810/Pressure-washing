@@ -78,5 +78,13 @@ export function EstimatesList({ rows }: { rows: EstimateRow[] }) {
     },
   ];
 
-  return <BulkActionTable rows={rows} columns={columns} actions={actions} itemNoun="estimate" />;
+  return (
+    <BulkActionTable
+      rows={rows}
+      columns={columns}
+      actions={actions}
+      itemNoun="estimate"
+      rowHref={(e) => `/estimates/${e.id}`}
+    />
+  );
 }

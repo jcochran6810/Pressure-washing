@@ -220,6 +220,105 @@ export async function deleteJob(id: string) {
   revalidatePath("/jobs");
 }
 
+export type BulkResult = { ok: number; failed: number; errors: string[] };
+
+export async function bulkDeleteJobs(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  if (!ids.length) return result;
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { error, count } = await supabase
+    .from("jobs")
+    .delete({ count: "exact" })
+    .in("id", ids)
+    .eq("organization_id", organizationId);
+  if (error) {
+    result.failed = ids.length;
+    result.errors.push(error.message);
+  } else {
+    result.ok = count ?? ids.length;
+    result.failed = ids.length - result.ok;
+  }
+  revalidatePath("/jobs");
+  revalidatePath("/calendar");
+  return result;
+}
+
+export async function bulkSetJobStatus(ids: string[], status: string): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  for (const id of ids) {
+    try {
+      await setJobStatus(id, status);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  return result;
+}
+
+export const bulkMarkJobsCompleted = (ids: string[]) => bulkSetJobStatus(ids, "completed");
+export const bulkMarkJobsInProgress = (ids: string[]) => bulkSetJobStatus(ids, "in_progress");
+export const bulkMarkJobsScheduled = (ids: string[]) => bulkSetJobStatus(ids, "scheduled");
+export const bulkCancelJobs = (ids: string[]) => bulkSetJobStatus(ids, "cancelled");
+
+export async function bulkSendJobReminders(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  if (!ids.length) return result;
+  const { sendTemplated } = await import("@/lib/messaging");
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+
+  for (const id of ids) {
+    try {
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("id, title, scheduled_start, customers(first_name, last_name, company_name, email, phone, mobile_phone), properties(address_line1, city, state)")
+        .eq("id", id)
+        .eq("organization_id", organizationId)
+        .single();
+      if (!job) throw new Error("Job not found");
+      const cust: any = job.customers;
+      const prop: any = job.properties;
+      if (!cust?.email) throw new Error("Customer has no email");
+      const send = await sendTemplated({
+        supabase: supabase as any,
+        organizationId,
+        customerId: null,
+        kind: "appointment_reminder",
+        channel: "email",
+        to: { email: cust?.email, phone: cust?.phone || cust?.mobile_phone },
+        replyToEmail: organization?.email,
+        relatedKind: "job",
+        relatedId: id,
+        vars: {
+          org_name: organization?.name ?? "",
+          org_phone: organization?.phone ?? "",
+          customer_first_name: cust?.first_name ?? cust?.company_name ?? "there",
+          scheduled_start: job.scheduled_start
+            ? new Date(job.scheduled_start).toLocaleString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : "TBD",
+          property_address: prop
+            ? `${prop.address_line1}${prop.city ? `, ${prop.city}` : ""}${prop.state ? `, ${prop.state}` : ""}`
+            : "",
+        },
+      });
+      if (!send.ok) throw new Error(send.reason);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  revalidatePath("/jobs");
+  return result;
+}
+
 // Used by the drag-and-drop calendar to move a job's scheduled day while preserving
 // the time-of-day. If the job had no scheduled_start we default to 9am local.
 export async function moveJobToDate(jobId: string, isoDate: string) {
