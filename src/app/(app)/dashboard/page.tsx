@@ -54,14 +54,14 @@ export default async function DashboardPage() {
   const lowStockItems = (lowStock ?? []).filter((c) => (c.current_stock ?? 0) <= (c.reorder_level ?? 0));
 
   return (
-    <div>
+    <div id="overview">
       <div className="mb-5">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-600">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</p>
       </div>
 
       {/* Top stats — accounting focus */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4">
+      <div id="kpis" className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4">
         <KpiCard label="Revenue MTD" value={formatCurrency(revenueMTD)} tone="ok" />
         <KpiCard label="Expenses MTD" value={formatCurrency(expenseMTD)} />
         <KpiCard label="Profit MTD" value={formatCurrency(profitMTD)} tone={profitMTD >= 0 ? "ok" : "warn"} />
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Action items strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div id="alerts" className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <ActionStat label="Unpaid invoices" count={unpaidCount ?? 0} href="/invoices?status=sent" tone={(unpaidCount ?? 0) > 0 ? "warn" : "ok"} />
         <ActionStat label="Overdue" count={overdueCount ?? 0} href="/invoices?status=overdue" tone={(overdueCount ?? 0) > 0 ? "alert" : "ok"} />
         <ActionStat label="Estimates to follow up" count={followUpEstimates?.length ?? 0} href="/estimates" tone={(followUpEstimates?.length ?? 0) > 0 ? "warn" : "ok"} />
@@ -78,7 +78,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <section className="card">
+        <section id="this-week" className="card">
           <header className="px-4 py-3 border-b flex items-center justify-between">
             <h2 className="font-semibold">This week's jobs</h2>
             <Link href="/jobs" className="text-sm text-brand-600 hover:underline">View all</Link>
