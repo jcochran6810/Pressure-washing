@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader, EmptyState } from "@/components/page-header";
-import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { EstimatesList, type EstimateRow } from "./estimates-list";
 
 export const dynamic = "force-dynamic";
 
@@ -25,30 +24,7 @@ export default async function EstimatesPage() {
   return (
     <div>
       <PageHeader title="Estimates" description="Quote work to customers." action={{ label: "New estimate", href: "/estimates/new" }} />
-      <div className="table-wrap overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Customer</th>
-              <th className="hidden sm:table-cell">Issued</th>
-              <th>Total</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((e: any) => (
-              <tr key={e.id}>
-                <td><Link href={`/estimates/${e.id}`} className="font-medium hover:text-brand-700">{e.estimate_number}</Link></td>
-                <td>{customerDisplayName(e.customers ?? {})}</td>
-                <td className="hidden sm:table-cell text-gray-500">{formatDate(e.issue_date)}</td>
-                <td className="font-medium">{formatCurrency(Number(e.total))}</td>
-                <td><span className={`badge ${statusColor(e.status)}`}>{e.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <EstimatesList rows={data as unknown as EstimateRow[]} />
     </div>
   );
 }

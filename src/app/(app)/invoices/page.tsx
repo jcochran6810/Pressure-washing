@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader, EmptyState } from "@/components/page-header";
-import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { InvoicesList, type InvoiceRow } from "./invoices-list";
 
 export const dynamic = "force-dynamic";
 
@@ -35,34 +35,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           <FilterTab key={s} href={`/invoices?status=${s}`} label={s} active={status === s} />
         ))}
       </div>
-      <div className="table-wrap overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Customer</th>
-              <th className="hidden sm:table-cell">Issued</th>
-              <th className="hidden sm:table-cell">Due</th>
-              <th>Total</th>
-              <th>Balance</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((i: any) => (
-              <tr key={i.id}>
-                <td><Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{i.invoice_number}</Link></td>
-                <td>{customerDisplayName(i.customers ?? {})}</td>
-                <td className="hidden sm:table-cell text-gray-500">{formatDate(i.issue_date)}</td>
-                <td className="hidden sm:table-cell text-gray-500">{formatDate(i.due_date)}</td>
-                <td className="font-medium">{formatCurrency(Number(i.total))}</td>
-                <td className="font-medium">{formatCurrency(Number(i.balance_due))}</td>
-                <td><span className={`badge ${statusColor(i.status)}`}>{i.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <InvoicesList rows={data as unknown as InvoiceRow[]} />
     </div>
   );
 }

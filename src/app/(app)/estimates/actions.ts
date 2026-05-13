@@ -321,3 +321,55 @@ export async function deleteEstimate(id: string) {
   revalidatePath("/estimates");
   redirect("/estimates");
 }
+
+export type BulkResult = { ok: number; failed: number; errors: string[] };
+
+export async function bulkDeleteEstimates(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  if (!ids.length) return result;
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { error, count } = await supabase
+    .from("estimates")
+    .delete({ count: "exact" })
+    .in("id", ids)
+    .eq("organization_id", organizationId);
+  if (error) {
+    result.failed = ids.length;
+    result.errors.push(error.message);
+  } else {
+    result.ok = count ?? ids.length;
+    result.failed = ids.length - result.ok;
+  }
+  revalidatePath("/estimates");
+  return result;
+}
+
+export async function bulkSaveEstimatesToDrive(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  for (const id of ids) {
+    try {
+      await saveEstimateToDrive(id);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  revalidatePath("/estimates");
+  return result;
+}
+
+export async function bulkEmailEstimatesToCustomers(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  for (const id of ids) {
+    try {
+      await emailEstimateToCustomer(id);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  revalidatePath("/estimates");
+  return result;
+}

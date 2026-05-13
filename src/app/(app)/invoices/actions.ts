@@ -335,6 +335,58 @@ export async function deleteInvoice(id: string) {
   redirect("/invoices");
 }
 
+export type BulkResult = { ok: number; failed: number; errors: string[] };
+
+export async function bulkDeleteInvoices(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  if (!ids.length) return result;
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { error, count } = await supabase
+    .from("invoices")
+    .delete({ count: "exact" })
+    .in("id", ids)
+    .eq("organization_id", organizationId);
+  if (error) {
+    result.failed = ids.length;
+    result.errors.push(error.message);
+  } else {
+    result.ok = count ?? ids.length;
+    result.failed = ids.length - result.ok;
+  }
+  revalidatePath("/invoices");
+  return result;
+}
+
+export async function bulkSaveInvoicesToDrive(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  for (const id of ids) {
+    try {
+      await saveInvoiceToDrive(id);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  revalidatePath("/invoices");
+  return result;
+}
+
+export async function bulkEmailInvoicesToCustomers(ids: string[]): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, errors: [] };
+  for (const id of ids) {
+    try {
+      await emailInvoiceToCustomer(id);
+      result.ok++;
+    } catch (e) {
+      result.failed++;
+      result.errors.push(`${id}: ${(e as Error).message}`);
+    }
+  }
+  revalidatePath("/invoices");
+  return result;
+}
+
 // Send invoice / receipt / reminder via templated email or SMS.
 export async function sendInvoiceViaTemplate(
   id: string,
