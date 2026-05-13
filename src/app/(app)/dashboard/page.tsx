@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
 import { formatCurrency, formatDate, customerDisplayName, statusColor } from "@/lib/utils";
+import { DashboardHub } from "@/components/dashboard-hub";
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +56,16 @@ export default async function DashboardPage() {
 
   return (
     <div id="overview">
-      <div className="mb-5">
+      <div className="mb-4">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-600">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</p>
+      </div>
+
+      {/* Main navigation hub — six grouped tabs (mobile-first) */}
+      <DashboardHub />
+
+      <div className="mb-2 mt-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">At a glance</h2>
       </div>
 
       {/* Top stats — accounting focus */}
