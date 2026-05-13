@@ -160,7 +160,7 @@ export function AppShell({
       )}
 
       {/* Main */}
-      <main className="flex-1 lg:ml-60 pb-24 lg:pb-0">
+      <main className="flex-1 lg:ml-60 pb-20 lg:pb-0">
         {isDemo && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
             <span>
@@ -174,21 +174,10 @@ export function AppShell({
 
       {/* Mobile bottom tabs */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200">
-        <div className="grid grid-cols-4 relative">
+        <div className="grid grid-cols-4">
           <BottomTab href="/dashboard" label="Home" active={isActive("/dashboard")} icon={<HomeIcon />} />
           <BottomTab href="/jobs" label="Jobs" active={isActive("/jobs")} icon={<BriefcaseIcon />} />
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            aria-label="Quick add"
-            className="absolute left-1/2 -translate-x-1/2 -top-6 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg grid place-items-center active:scale-95 transition-transform"
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-          <div aria-hidden />
+          <BottomTabButton label="Add" onClick={() => setAddOpen(true)} icon={<PlusIcon />} />
           <BottomTab href="/calendar" label="Calendar" active={isActive("/calendar")} icon={<CalendarIcon />} />
         </div>
       </nav>
@@ -262,6 +251,36 @@ function BottomTab({
       <span className="w-6 h-6 mb-0.5 grid place-items-center">{icon}</span>
       {label}
     </Link>
+  );
+}
+
+function BottomTabButton({
+  label,
+  onClick,
+  icon,
+}: {
+  label: string;
+  onClick: () => void;
+  icon: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center justify-center py-2 text-[11px] font-medium text-gray-500 hover:text-brand-600"
+    >
+      <span className="w-6 h-6 mb-0.5 grid place-items-center">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }
 

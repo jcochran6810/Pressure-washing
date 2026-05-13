@@ -33,3 +33,15 @@ export async function disconnectGoogleDrive() {
   await supabase.from("google_drive_connections").delete().eq("organization_id", organizationId);
   revalidatePath("/settings");
 }
+
+export async function setLinkedCalendar(formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const calendar_id = String(formData.get("calendar_id") || "").trim() || null;
+  const calendar_name = String(formData.get("calendar_name") || "").trim() || null;
+  await supabase
+    .from("google_drive_connections")
+    .update({ calendar_id, calendar_name, updated_at: new Date().toISOString() })
+    .eq("organization_id", organizationId);
+  revalidatePath("/settings");
+  revalidatePath("/calendar");
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { exchangeCode, ensureFolder, userInfo } from "@/lib/google-drive";
+import { listCalendars } from "@/lib/google-calendar";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -34,6 +35,22 @@ export async function GET(request: Request) {
       ensureFolder(tokens.access_token, "Receipts", root),
     ]);
 
+    // Default-pick the user's primary calendar so /calendar works immediately.
+    // They can pick a different one in settings.
+    let calendarId: string | null = null;
+    let calendarName: string | null = null;
+    try {
+      const calendars = await listCalendars(tokens.access_token);
+      const primary = calendars.find((c) => c.primary) ?? calendars[0];
+      if (primary) {
+        calendarId = primary.id;
+        calendarName = primary.summary;
+      }
+    } catch (e) {
+      // Calendar scope might have been declined — proceed without it.
+      console.error("Calendar list failed:", e);
+    }
+
     await supabase.from("google_drive_connections").upsert({
       organization_id,
       refresh_token: tokens.refresh_token,
@@ -46,6 +63,8 @@ export async function GET(request: Request) {
       receipts_folder_id: receipts,
       scopes: tokens.scope.split(" "),
       connected_email: me?.email ?? null,
+      calendar_id: calendarId,
+      calendar_name: calendarName,
       updated_at: new Date().toISOString(),
     });
   } catch (err: any) {

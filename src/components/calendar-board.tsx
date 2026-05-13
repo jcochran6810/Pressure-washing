@@ -15,7 +15,16 @@ type CalJob = {
   customers: any;
 };
 
-type Day = { iso: string; label: string; dayOfMonth: number; isToday: boolean };
+type GCalEvent = {
+  id: string;
+  summary?: string;
+  location?: string;
+  htmlLink?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+};
+
+type Day = { iso: string; label: string; dayOfMonth: number; isToday: boolean; events?: GCalEvent[] };
 
 export function CalendarBoard({ days, jobs }: { days: Day[]; jobs: CalJob[] }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -87,7 +96,7 @@ export function CalendarBoard({ days, jobs }: { days: Day[]; jobs: CalJob[] }) {
                 <span className="text-gray-500">{d.dayOfMonth}</span>
               </header>
               <div className="p-1.5 space-y-1">
-                {dayJobs.length === 0 && (
+                {dayJobs.length === 0 && (!d.events || d.events.length === 0) && (
                   <p className="text-xs text-gray-400 text-center py-3">—</p>
                 )}
                 {dayJobs.map((j) => (
@@ -120,6 +129,36 @@ export function CalendarBoard({ days, jobs }: { days: Day[]; jobs: CalJob[] }) {
                     </Link>
                   </div>
                 ))}
+                {d.events?.map((ev) => {
+                  const startStr = ev.start.dateTime ?? ev.start.date;
+                  const isAllDay = !ev.start.dateTime;
+                  return (
+                    <a
+                      key={ev.id}
+                      href={ev.htmlLink}
+                      target="_blank"
+                      rel="noopener"
+                      className="block p-1.5 rounded text-xs bg-blue-50 hover:bg-blue-100 border-l-2 border-blue-500"
+                      title={ev.summary || "Google event"}
+                    >
+                      <p className="font-medium truncate text-blue-900">{ev.summary || "Untitled"}</p>
+                      <p className="text-blue-700/80 text-[10px]">
+                        {isAllDay
+                          ? "All day"
+                          : startStr
+                            ? new Date(startStr).toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        <span className="ml-1 text-blue-500">· Google</span>
+                      </p>
+                      {ev.location && (
+                        <p className="text-blue-700/70 text-[10px] truncate">{ev.location}</p>
+                      )}
+                    </a>
+                  );
+                })}
               </div>
             </div>
           );

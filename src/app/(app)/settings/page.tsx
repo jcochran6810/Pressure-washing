@@ -1,5 +1,7 @@
 import { getSessionAndOrg } from "@/lib/org";
 import { updateOrganization, disconnectGoogleDrive } from "./actions";
+import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
+import { CalendarPicker } from "@/components/calendar-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { google, msg } = await searchParams;
   const { data: drive } = await supabase.from("google_drive_connections").select("*").eq("organization_id", organizationId).maybeSingle();
+
+  // If Google is connected with calendar scope, fetch the user's calendar list so
+  // they can pick which one this app pulls events from.
+  let calendars: GoogleCalendar[] = [];
+  let calendarError: string | null = null;
+  if (drive) {
+    try {
+      const conn = await getCalendarAccessToken(organizationId);
+      if (conn) calendars = await listCalendars(conn.token);
+    } catch (e) {
+      calendarError = (e as Error).message;
+    }
+  }
 
   const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const emailConfigured = Boolean(process.env.RESEND_API_KEY);
@@ -76,8 +91,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <h2 className="font-semibold mb-3">Integrations</h2>
         <div className="space-y-3 text-sm">
           <IntegrationRow
-            title="Google Drive"
-            description="Save invoices, estimates, receipts, and job photos to your Drive. Send links to customers."
+            title="Google Drive & Calendar"
+            description="Save invoices, estimates, receipts, and job photos to Drive — and pull events from a Google Calendar into the in-app calendar."
             configured={googleConfigured}
             connected={Boolean(drive)}
             connectedTo={drive?.connected_email ?? null}
@@ -85,6 +100,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             disconnectAction={disconnectGoogleDrive}
             setupHint="Create OAuth credentials in Google Cloud Console and set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET in .env.local."
           />
+
+          {drive && (
+            <div id="calendar" className="border border-gray-200 rounded-lg p-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="font-semibold">Linked Google Calendar</h3>
+                  <p className="text-xs text-gray-600">
+                    Pick which calendar's events show up on the in-app /calendar page.
+                  </p>
+                </div>
+                {drive.calendar_name && (
+                  <span className="badge bg-green-100 text-green-700">{drive.calendar_name}</span>
+                )}
+              </div>
+              {calendarError ? (
+                <p className="text-xs text-red-600 mt-2">
+                  Couldn't load calendars: {calendarError}. Try reconnecting Google to grant the calendar.readonly scope.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <CalendarPicker calendars={calendars} currentCalendarId={drive.calendar_id ?? null} />
+                </div>
+              )}
+            </div>
+          )}
           <IntegrationRow
             title="Resend (email receipts)"
             description="Automatically email PAID receipts and invoices to customers."
