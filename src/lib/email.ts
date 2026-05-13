@@ -8,11 +8,13 @@ type SendArgs = {
   replyTo?: string;
 };
 
-export async function sendEmail(args: SendArgs) {
+export type EmailResult = { ok: true; id: string } | { ok: false; reason: string };
+
+export async function sendEmail(args: SendArgs): Promise<EmailResult> {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "Suds <onboarding@resend.dev>";
   if (!key) {
-    return { ok: false, reason: "RESEND_API_KEY not set" as const };
+    return { ok: false, reason: "RESEND_API_KEY not set" };
   }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -33,7 +35,7 @@ export async function sendEmail(args: SendArgs) {
     return { ok: false, reason: text };
   }
   const data = await res.json();
-  return { ok: true, id: data.id as string };
+  return { ok: true, id: (data?.id as string) ?? "" };
 }
 
 export function receiptHtml(opts: {

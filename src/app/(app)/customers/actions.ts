@@ -2,24 +2,29 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getSessionAndOrg } from "@/lib/org";
+import { customerSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 export async function createCustomer(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const customerType = String(formData.get("customer_type") || "residential");
-  const first_name = String(formData.get("first_name") || "").trim() || null;
-  const last_name = String(formData.get("last_name") || "").trim() || null;
-  const company_name = String(formData.get("company_name") || "").trim() || null;
-  const email = String(formData.get("email") || "").trim() || null;
-  const phone = String(formData.get("phone") || "").trim() || null;
-  const mobile_phone = String(formData.get("mobile_phone") || "").trim() || null;
-  const notes = String(formData.get("notes") || "").trim() || null;
-  const lead_source = String(formData.get("lead_source") || "").trim() || null;
+  const data = parseForm(customerSchema, formData);
 
   const { data: customer, error } = await supabase
     .from("customers")
-    .insert({ organization_id: organizationId, customer_type: customerType, first_name, last_name, company_name, email, phone, mobile_phone, notes, lead_source })
+    .insert({
+      organization_id: organizationId,
+      customer_type: customerType,
+      first_name: data.first_name ?? null,
+      last_name: data.last_name ?? null,
+      company_name: data.company_name ?? null,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      mobile_phone: data.mobile_phone ?? null,
+      notes: data.notes ?? null,
+      lead_source: data.lead_source ?? null,
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -44,15 +49,16 @@ export async function createCustomer(formData: FormData) {
 
 export async function updateCustomer(id: string, formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
+  const data = parseForm(customerSchema, formData);
   const payload = {
     customer_type: String(formData.get("customer_type") || "residential"),
-    first_name: String(formData.get("first_name") || "").trim() || null,
-    last_name: String(formData.get("last_name") || "").trim() || null,
-    company_name: String(formData.get("company_name") || "").trim() || null,
-    email: String(formData.get("email") || "").trim() || null,
-    phone: String(formData.get("phone") || "").trim() || null,
-    mobile_phone: String(formData.get("mobile_phone") || "").trim() || null,
-    notes: String(formData.get("notes") || "").trim() || null,
+    first_name: data.first_name ?? null,
+    last_name: data.last_name ?? null,
+    company_name: data.company_name ?? null,
+    email: data.email ?? null,
+    phone: data.phone ?? null,
+    mobile_phone: data.mobile_phone ?? null,
+    notes: data.notes ?? null,
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase.from("customers").update(payload).eq("id", id).eq("organization_id", organizationId);

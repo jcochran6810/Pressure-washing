@@ -1,21 +1,21 @@
 "use server";
 
 import { getSessionAndOrg } from "@/lib/org";
+import { jobSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 export async function createJob(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
-  const customer_id = String(formData.get("customer_id") || "");
-  if (!customer_id) throw new Error("Customer required");
-
-  const property_id = (String(formData.get("property_id") || "") || null) as string | null;
-  const title = String(formData.get("title") || "").trim();
-  const description = String(formData.get("description") || "").trim() || null;
-  const scheduled_start = String(formData.get("scheduled_start") || "") || null;
-  const scheduled_end = String(formData.get("scheduled_end") || "") || null;
-  const total_amount = Number(formData.get("total_amount") || 0);
-  const status = String(formData.get("status") || "scheduled");
+  const data = parseForm(jobSchema, formData);
+  const customer_id = data.customer_id;
+  const property_id = data.property_id ?? null;
+  const title = data.title;
+  const description = data.description ?? null;
+  const scheduled_start = data.scheduled_start || null;
+  const scheduled_end = data.scheduled_end || null;
+  const total_amount = data.total_amount ?? 0;
+  const status = data.status || "scheduled";
 
   const { data: job, error } = await supabase
     .from("jobs")
@@ -218,4 +218,78 @@ export async function deleteJob(id: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
   await supabase.from("jobs").delete().eq("id", id).eq("organization_id", organizationId);
   revalidatePath("/jobs");
+}
+
+// Used by the drag-and-drop calendar to move a job's scheduled day while preserving
+// the time-of-day. If the job had no scheduled_start we default to 9am local.
+export async function moveJobToDate(jobId: string, isoDate: string) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new Error("Invalid date");
+
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("scheduled_start, scheduled_end, customer_id")
+    .eq("id", jobId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!job) throw new Error("Job not found");
+
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const targetDay = new Date(y, m - 1, d);
+  let newStart: Date;
+  let newEnd: Date | null = null;
+  const prevStart = job.scheduled_start ? new Date(job.scheduled_start) : null;
+
+  if (prevStart) {
+    newStart = new Date(prevStart);
+    newStart.setFullYear(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate());
+    if (job.scheduled_end) {
+      const prevEnd = new Date(job.scheduled_end);
+      const deltaMs = prevEnd.getTime() - prevStart.getTime();
+      newEnd = new Date(newStart.getTime() + deltaMs);
+    }
+  } else {
+    newStart = new Date(targetDay);
+    newStart.setHours(9, 0, 0, 0);
+  }
+
+  await supabase
+    .from("jobs")
+    .update({
+      scheduled_start: newStart.toISOString(),
+      scheduled_end: newEnd ? newEnd.toISOString() : null,
+    })
+    .eq("id", jobId)
+    .eq("organization_id", organizationId);
+
+  // Refresh the appointment reminder
+  await (supabase as any)
+    .from("customer_reminders")
+    .delete()
+    .eq("job_id", jobId)
+    .eq("kind", "appointment")
+    .eq("status", "scheduled");
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("appointment_reminder_hours")
+    .eq("id", organizationId)
+    .single();
+  const hours = (org as any)?.appointment_reminder_hours ?? 24;
+  const remindAt = new Date(newStart);
+  remindAt.setHours(remindAt.getHours() - hours);
+  if (remindAt > new Date()) {
+    await (supabase as any).from("customer_reminders").insert({
+      organization_id: organizationId,
+      customer_id: job.customer_id,
+      job_id: jobId,
+      kind: "appointment",
+      channel: "email",
+      scheduled_for: remindAt.toISOString(),
+      message: `Reminder: your appointment is in ${hours} hours.`,
+    });
+  }
+
+  revalidatePath("/calendar");
+  revalidatePath("/jobs");
+  revalidatePath(`/jobs/${jobId}`);
 }

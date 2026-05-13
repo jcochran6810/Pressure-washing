@@ -4,6 +4,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { sendEmail } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
+import { estimateSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -43,19 +44,18 @@ function parseLineItems(formData: FormData): LineItem[] {
 
 export async function createEstimate(formData: FormData) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const customer_id = String(formData.get("customer_id") || "");
-  if (!customer_id) throw new Error("Customer required");
-
-  const property_id = (String(formData.get("property_id") || "") || null) as string | null;
-  const issue_date = String(formData.get("issue_date") || new Date().toISOString().slice(0, 10));
+  const validated = parseForm(estimateSchema, formData);
+  const customer_id = validated.customer_id;
+  const property_id = validated.property_id ?? null;
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
   // 30-day default expiry from issue date
   const defaultExpiry = new Date(issue_date);
   defaultExpiry.setDate(defaultExpiry.getDate() + 30);
-  const expires_at = String(formData.get("expires_at") || "") || defaultExpiry.toISOString().slice(0, 10);
-  const tax_rate = Number(formData.get("tax_rate") || 0);
-  const discount_amount = Number(formData.get("discount_amount") || 0);
-  const notes = String(formData.get("notes") || "").trim() || null;
-  const terms = String(formData.get("terms") || "").trim() || null;
+  const expires_at = validated.expires_at || defaultExpiry.toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const notes = validated.notes ?? null;
+  const terms = validated.terms ?? null;
   const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
   const items = parseLineItems(formData);
@@ -279,6 +279,40 @@ export async function emailEstimateToCustomer(id: string) {
     replyTo: organization?.email ?? undefined,
   });
   await setEstimateStatus(id, "sent");
+}
+
+// Send the estimate via a pre-made template (email or SMS).
+// `channel` = "email" | "sms"
+export async function sendEstimateViaTemplate(id: string, channel: "email" | "sms") {
+  const { sendTemplated, appUrl } = await import("@/lib/messaging");
+  const { formatCurrency } = await import("@/lib/utils");
+  const { supabase, organizationId, organization, est } = await loadEstimateForDoc(id);
+  const cust: any = est.customers;
+  const approvalUrl = est.approval_token ? `${appUrl()}/quote/${est.approval_token}` : "";
+
+  const result = await sendTemplated({
+    supabase: supabase as any,
+    organizationId,
+    customerId: cust?.id ?? null,
+    kind: "estimate_send",
+    channel,
+    to: { email: cust?.email, phone: cust?.phone || cust?.mobile_phone },
+    replyToEmail: organization?.email,
+    relatedKind: "estimate",
+    relatedId: id,
+    vars: {
+      org_name: organization?.name ?? "",
+      org_phone: organization?.phone ?? "",
+      customer_first_name: cust?.first_name ?? cust?.company_name ?? "there",
+      estimate_number: est.estimate_number,
+      estimate_total: formatCurrency(Number(est.total ?? 0), organization?.currency ?? "USD"),
+      expires_at: est.expires_at ?? "",
+      approval_url: approvalUrl,
+    },
+  });
+  if (!result.ok) throw new Error(result.reason);
+  await setEstimateStatus(id, "sent");
+  revalidatePath(`/estimates/${id}`);
 }
 
 export async function deleteEstimate(id: string) {

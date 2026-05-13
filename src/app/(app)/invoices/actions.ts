@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { sendEmail, receiptHtml } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
+import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -40,19 +41,18 @@ async function nextInvoiceNumber(orgId: string, supabase: any) {
 
 export async function createInvoice(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
-  const customer_id = String(formData.get("customer_id") || "");
-  if (!customer_id) throw new Error("Customer required");
-
-  const due_date = String(formData.get("due_date") || "") || null;
-  const issue_date = String(formData.get("issue_date") || new Date().toISOString().slice(0, 10));
-  const tax_rate = Number(formData.get("tax_rate") || 0);
-  const discount_amount = Number(formData.get("discount_amount") || 0);
+  const validated = parseForm(invoiceSchema, formData);
+  const customer_id = validated.customer_id;
+  const due_date = validated.due_date || null;
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
   const items = parseLineItems(formData);
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
   const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
   const total = Math.max(0, subtotal - discount_amount) + tax_amount;
-  const notes = String(formData.get("notes") || "").trim() || null;
-  const terms = String(formData.get("terms") || "").trim() || null;
+  const notes = validated.notes ?? null;
+  const terms = validated.terms ?? null;
 
   const invoice_number = await nextInvoiceNumber(organizationId, supabase);
 
@@ -92,12 +92,12 @@ export async function setInvoiceStatus(id: string, status: string) {
 
 export async function recordPayment(invoiceId: string, formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
-  const amount = Number(formData.get("amount") || 0);
-  if (amount <= 0) throw new Error("Amount must be > 0");
-  const payment_method = String(formData.get("payment_method") || "cash");
-  const payment_date = String(formData.get("payment_date") || new Date().toISOString().slice(0, 10));
-  const reference_number = String(formData.get("reference_number") || "").trim() || null;
-  const notes = String(formData.get("notes") || "").trim() || null;
+  const v = parseForm(paymentSchema, formData);
+  const amount = v.amount;
+  const payment_method = v.payment_method || "cash";
+  const payment_date = v.payment_date || new Date().toISOString().slice(0, 10);
+  const reference_number = v.reference_number ?? null;
+  const notes = v.notes ?? null;
 
   const { data: inv } = await supabase
     .from("invoices")
@@ -333,4 +333,56 @@ export async function deleteInvoice(id: string) {
   await supabase.from("invoices").delete().eq("id", id).eq("organization_id", organizationId);
   revalidatePath("/invoices");
   redirect("/invoices");
+}
+
+// Send invoice / receipt / reminder via templated email or SMS.
+export async function sendInvoiceViaTemplate(
+  id: string,
+  channel: "email" | "sms",
+  kind: "invoice_send" | "receipt" | "payment_reminder" = "invoice_send",
+) {
+  const { sendTemplated } = await import("@/lib/messaging");
+  const { organizationId, organization, inv } = await loadInvoiceForDoc(id);
+  const { supabase } = await getSessionAndOrg();
+  const cust: any = inv.customers;
+
+  // Ensure we have a Stripe link for invoice_send when configured
+  if (kind !== "receipt" && !inv.stripe_payment_link && getStripe()) {
+    try {
+      await createStripePaymentLink(id);
+    } catch (e) {
+      console.error("Stripe link generation failed:", e);
+    }
+  }
+  const { inv: invFresh } = await loadInvoiceForDoc(id);
+
+  const result = await sendTemplated({
+    supabase: supabase as any,
+    organizationId,
+    customerId: cust?.id ?? null,
+    kind,
+    channel,
+    to: { email: cust?.email, phone: cust?.phone || cust?.mobile_phone },
+    replyToEmail: organization?.email,
+    relatedKind: "invoice",
+    relatedId: id,
+    vars: {
+      org_name: organization?.name ?? "",
+      org_phone: organization?.phone ?? "",
+      customer_first_name: cust?.first_name ?? cust?.company_name ?? "there",
+      invoice_number: invFresh.invoice_number,
+      invoice_total: formatCurrency(Number(invFresh.total ?? 0), organization?.currency ?? "USD"),
+      balance_due: formatCurrency(Number(invFresh.balance_due ?? 0), organization?.currency ?? "USD"),
+      amount_paid: formatCurrency(Number(invFresh.amount_paid ?? 0), organization?.currency ?? "USD"),
+      due_date: invFresh.due_date ? formatDate(invFresh.due_date) : "",
+      payment_link: invFresh.stripe_payment_link ?? "",
+      payment_method: "",
+      payment_date: formatDate(new Date()),
+    },
+  });
+  if (!result.ok) throw new Error(result.reason);
+  if (kind === "invoice_send" && invFresh.status === "draft") {
+    await setInvoiceStatus(id, "sent");
+  }
+  revalidatePath(`/invoices/${id}`);
 }
