@@ -29,6 +29,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     }
   }
 
+  // Platform-level capabilities — set up once by the operator in Vercel env vars,
+  // shared across every user. End users see these as availability indicators only.
   const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const emailConfigured = Boolean(process.env.RESEND_API_KEY);
   const mapsConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
@@ -98,21 +100,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </section>
 
       <section className="card-padded mb-5">
-        <h2 className="font-semibold mb-1">Integrations</h2>
-        <p className="text-xs text-gray-500 mb-3">Tap a card to set up, connect, or manage the service.</p>
+        <h2 className="font-semibold mb-1">Connect your accounts</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Link your own Google and QuickBooks accounts so the app can read and write on your behalf.
+        </p>
         <div className="space-y-3 text-sm">
-          <IntegrationCard
+          <ConnectAccountCard
             title="Google Drive & Calendar"
-            description="Save invoices, estimates, receipts, and job photos to Drive — and pull events from a Google Calendar into the in-app calendar."
-            envReady={googleConfigured}
+            description="Save invoices, estimates, receipts, and job photos to your Drive — and pull events from your Google Calendar into the in-app calendar."
+            available={googleConfigured}
             connected={Boolean(drive)}
             connectedTo={drive?.connected_email ?? null}
-            signupUrl="https://console.cloud.google.com/apis/credentials"
-            signupLabel="Get OAuth credentials"
             connectHref="/api/google/connect"
             manageUrl="https://drive.google.com"
             disconnectAction={disconnectGoogleDrive}
-            envHint="Then set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your Vercel project."
           />
 
           {drive && (
@@ -140,62 +141,45 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </div>
           )}
 
-          <IntegrationCard
+          <ConnectAccountCard
             title="QuickBooks Online"
-            description="Push invoices and customers live to QuickBooks for accounting sync."
-            envReady={qboEnvReady}
+            description="Push your invoices and customers live to QuickBooks for accounting sync."
+            available={qboEnvReady}
             connected={Boolean(qboConn)}
             connectedTo={qboConn ? `realm ${qboConn.realm_id} · ${qboConn.environment}` : null}
-            signupUrl="https://developer.intuit.com/app/developer/dashboard"
-            signupLabel="Create an Intuit app"
             connectHref="/api/accounting/qbo/connect"
             manageUrl="https://quickbooks.intuit.com"
             disconnectAction={disconnectQbo}
-            envHint="Then set QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, and QBO_ENVIRONMENT."
           />
+        </div>
+      </section>
 
-          <IntegrationCard
-            title="Stripe"
-            description="Create payment links on invoices and auto-record payments when customers pay online."
-            envReady={stripeConfigured}
-            connected={stripeConfigured}
-            signupUrl="https://dashboard.stripe.com/register"
-            signupLabel="Create a Stripe account"
-            manageUrl="https://dashboard.stripe.com"
-            envHint="Then set STRIPE_SECRET_KEY (and STRIPE_WEBHOOK_SECRET for webhooks)."
+      <section className="card-padded mb-5">
+        <h2 className="font-semibold mb-1">Platform services</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          These run on the app's shared infrastructure — nothing for you to set up.
+        </p>
+        <div className="space-y-2 text-sm">
+          <PlatformServiceRow
+            title="Email delivery"
+            description="Sends estimate, invoice, and receipt emails to your customers."
+            active={emailConfigured}
           />
-
-          <IntegrationCard
-            title="Resend (email)"
-            description="Automatically email estimates, invoices, and paid receipts to customers."
-            envReady={emailConfigured}
-            connected={emailConfigured}
-            signupUrl="https://resend.com/signup"
-            signupLabel="Create a Resend account"
-            manageUrl="https://resend.com/api-keys"
-            envHint="Then set RESEND_API_KEY and RESEND_FROM."
+          <PlatformServiceRow
+            title="SMS delivery"
+            description="Sends appointment reminders and links via text message."
+            active={telnyxConfigured}
           />
-
-          <IntegrationCard
-            title="Telnyx (SMS)"
-            description="Send appointment reminders, estimate links, and receipts via text message."
-            envReady={telnyxConfigured}
-            connected={telnyxConfigured}
-            signupUrl="https://telnyx.com/sign-up"
-            signupLabel="Create a Telnyx account"
-            manageUrl="https://portal.telnyx.com"
-            envHint="Then set TELNYX_API_KEY and TELNYX_FROM_NUMBER."
+          <PlatformServiceRow
+            title="Satellite imagery"
+            description="Powers polygon measurements on satellite maps."
+            active={mapsConfigured}
           />
-
-          <IntegrationCard
-            title="Google Maps"
-            description="Powers the polygon measurement tool on satellite imagery."
-            envReady={mapsConfigured}
-            connected={mapsConfigured}
-            signupUrl="https://console.cloud.google.com/google/maps-apis"
-            signupLabel="Enable Maps APIs"
-            manageUrl="https://console.cloud.google.com/google/maps-apis"
-            envHint="Enable Maps JavaScript, Drawing, Geometry, Places, and Geocoding. Then set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY."
+          <PlatformServiceRow
+            title="Online payments (Stripe)"
+            description="Adds a Pay Now link to invoices."
+            active={stripeConfigured}
+            note="Currently routes payments to the platform Stripe account. Per-business Stripe Connect coming soon."
           />
         </div>
       </section>
@@ -203,54 +187,34 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   );
 }
 
-function IntegrationCard({
+function ConnectAccountCard({
   title,
   description,
-  envReady,
+  available,
   connected,
   connectedTo,
-  signupUrl,
-  signupLabel,
   connectHref,
   manageUrl,
   disconnectAction,
-  envHint,
 }: {
   title: string;
   description: string;
-  envReady: boolean;
+  available: boolean;
   connected: boolean;
   connectedTo?: string | null;
-  signupUrl: string;
-  signupLabel?: string;
-  connectHref?: string;
+  connectHref: string;
   manageUrl?: string;
   disconnectAction?: () => Promise<void>;
-  envHint?: string;
 }) {
-  // Decide where the whole card click should go.
-  // - connected: open the service's management console (new tab)
-  // - env vars set but OAuth not done: in-app connect flow
-  // - nothing configured: open the service's signup page (new tab)
-  const state: "connected" | "ready" | "needs_setup" = connected
+  // Three states from the user's POV:
+  // 1. Connected → tapping opens the service's management dashboard.
+  // 2. Available, not connected → tapping starts the in-app OAuth flow.
+  // 3. Not available on this deployment → read-only; ask support.
+  const state: "connected" | "ready" | "unavailable" = connected
     ? "connected"
-    : envReady
+    : available
       ? "ready"
-      : "needs_setup";
-
-  const primaryHref =
-    state === "connected"
-      ? manageUrl ?? signupUrl
-      : state === "ready" && connectHref
-        ? connectHref
-        : signupUrl;
-  const primaryExternal = state !== "ready";
-  const primaryLabel =
-    state === "connected"
-      ? "Manage"
-      : state === "ready"
-        ? "Connect"
-        : signupLabel ?? "Set up";
+      : "unavailable";
 
   const stateBadge =
     state === "connected" ? (
@@ -260,49 +224,55 @@ function IntegrationCard({
     ) : state === "ready" ? (
       <span className="badge bg-yellow-100 text-yellow-700 whitespace-nowrap">Ready to connect</span>
     ) : (
-      <span className="badge bg-gray-100 text-gray-700 whitespace-nowrap">Not set up</span>
+      <span className="badge bg-gray-100 text-gray-700 whitespace-nowrap">Currently unavailable</span>
     );
 
-  const Wrapper: any = primaryExternal ? "a" : Link;
-  const wrapperProps = primaryExternal
-    ? { href: primaryHref, target: "_blank", rel: "noopener noreferrer" }
-    : { href: primaryHref };
+  const inner = (
+    <div className="flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="font-semibold text-gray-900">{title}</h3>
+          {stateBadge}
+        </div>
+        <p className="text-xs text-gray-600 mt-1">{description}</p>
+        {state === "unavailable" && (
+          <p className="text-[11px] text-gray-500 mt-1">Contact support if you need this enabled for your account.</p>
+        )}
+      </div>
+      {state !== "unavailable" && (
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 shrink-0">
+          {state === "connected" ? "Manage" : "Connect"}
+          {state === "connected" ? (
+            <ExternalArrow />
+          ) : (
+            <Chevron />
+          )}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden hover:border-brand-300 hover:shadow-sm transition">
-      <Wrapper
-        {...wrapperProps}
-        className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-gray-900">{title}</h3>
-              {stateBadge}
-            </div>
-            <p className="text-xs text-gray-600 mt-1">{description}</p>
-            {state === "needs_setup" && envHint && (
-              <p className="text-[11px] text-gray-500 mt-1">{envHint}</p>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0 pl-2">
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-700">
-              {primaryLabel}
-              {primaryExternal ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              )}
-            </span>
-          </div>
-        </div>
-      </Wrapper>
+      {state === "connected" && manageUrl ? (
+        <a
+          href={manageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none"
+        >
+          {inner}
+        </a>
+      ) : state === "ready" ? (
+        <Link
+          href={connectHref}
+          className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none"
+        >
+          {inner}
+        </Link>
+      ) : (
+        <div className="block px-4 py-3 cursor-default">{inner}</div>
+      )}
       {connected && disconnectAction && (
         <div className="px-4 py-2 border-t bg-gray-50 flex justify-end">
           <form action={disconnectAction}>
@@ -313,6 +283,62 @@ function IntegrationCard({
         </div>
       )}
     </div>
+  );
+}
+
+function PlatformServiceRow({
+  title,
+  description,
+  active,
+  note,
+}: {
+  title: string;
+  description: string;
+  active: boolean;
+  note?: string;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-lg px-4 py-3 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="font-semibold text-gray-900">{title}</h3>
+          {active ? (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              Active
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+              Currently unavailable
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-600 mt-1">{description}</p>
+        {note && <p className="text-[11px] text-gray-500 mt-1">{note}</p>}
+        {!active && (
+          <p className="text-[11px] text-gray-500 mt-1">Contact support if you need this enabled.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExternalArrow() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 
