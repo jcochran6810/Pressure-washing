@@ -62,7 +62,7 @@ function HubCard({ group, open, onToggle }: { group: NavGroup; open: boolean; on
         aria-expanded={open}
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50"
       >
-        <HubIconTile n={group.n}>{group.icon}</HubIconTile>
+        <HubIconTile>{group.icon}</HubIconTile>
         <span className="flex-1 min-w-0">
           <span className="block font-semibold text-gray-900 truncate">{group.label}</span>
         </span>
@@ -98,15 +98,10 @@ function HubCard({ group, open, onToggle }: { group: NavGroup; open: boolean; on
   );
 }
 
-function HubIconTile({ n, children }: { n: number; children: ReactNode }) {
+function HubIconTile({ children }: { children: ReactNode }) {
   return (
-    <span className="relative shrink-0">
-      <span className="w-11 h-11 rounded-xl grid place-items-center bg-brand-50 text-brand-600">
-        {children}
-      </span>
-      <span className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold leading-[18px] text-center bg-brand-600 text-white">
-        {n}
-      </span>
+    <span className="w-11 h-11 rounded-xl grid place-items-center bg-brand-50 text-brand-600 shrink-0">
+      {children}
     </span>
   );
 }
