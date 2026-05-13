@@ -2,8 +2,9 @@ import Link from "next/link";
 import type { WorkflowState } from "@/lib/workflow";
 import { CopyButton } from "./copy-button";
 import { setEstimateStatus, emailEstimateToCustomer } from "@/app/(app)/estimates/actions";
-import { setJobStatus, scheduleJob } from "@/app/(app)/jobs/actions";
+import { setJobStatus } from "@/app/(app)/jobs/actions";
 import { emailInvoiceToCustomer, recordPayment } from "@/app/(app)/invoices/actions";
+import { ScheduleJobForm } from "./schedule-job-form";
 
 export function NextStepBanner({
   workflow,
@@ -92,21 +93,13 @@ export function NextStepBanner({
 
   // Step 5: job exists but not scheduled
   if (workflow.jobId && !workflow.jobScheduled && !workflow.jobInProgress && !workflow.jobCompleted) {
-    const schedule = scheduleJob.bind(null, workflow.jobId);
     return (
       <Banner tone="primary" eyebrow="Next step" title="Schedule this job">
-        <p className="text-sm text-gray-700 mb-3">Pick a start time. The customer gets an appointment reminder before it.</p>
-        <form action={schedule} className="flex flex-wrap gap-2 items-end">
-          <div>
-            <label className="text-xs">Start</label>
-            <input name="scheduled_start" type="datetime-local" required className="block" />
-          </div>
-          <div>
-            <label className="text-xs">End (optional)</label>
-            <input name="scheduled_end" type="datetime-local" className="block" />
-          </div>
-          <button className="btn-primary text-base px-5 py-3">📅 Schedule job</button>
-        </form>
+        <p className="text-sm text-gray-700 mb-3">
+          Pick a start time. We'll show what's already on your linked Google Calendar so you can dodge conflicts.
+          The customer gets an appointment reminder before it.
+        </p>
+        <ScheduleJobForm jobId={workflow.jobId} />
       </Banner>
     );
   }

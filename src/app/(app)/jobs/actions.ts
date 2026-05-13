@@ -167,6 +167,55 @@ async function nextInvoiceNumber(supabase: any, organizationId: string) {
   return `${prefix}-${num}`;
 }
 
+export type DaySchedule = {
+  events: { id: string; summary: string; start: string; end: string; allDay: boolean; htmlLink?: string }[];
+  calendarName: string | null;
+  connected: boolean;
+};
+
+export async function listGoogleEventsForDay(dateIso: string): Promise<DaySchedule> {
+  const { organizationId } = await getSessionAndOrg();
+  const { getCalendarAccessToken, listEvents } = await import("@/lib/google-calendar");
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    return { events: [], calendarName: null, connected: false };
+  }
+
+  const conn = await getCalendarAccessToken(organizationId);
+  if (!conn?.conn?.calendar_id) {
+    return { events: [], calendarName: null, connected: false };
+  }
+
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+  const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+
+  try {
+    const events = await listEvents({
+      access_token: conn.token,
+      calendar_id: conn.conn.calendar_id,
+      timeMin: dayStart,
+      timeMax: dayEnd,
+    });
+    return {
+      connected: true,
+      calendarName: conn.conn.calendar_name ?? conn.conn.calendar_id,
+      events: events
+        .map((e) => ({
+          id: e.id,
+          summary: e.summary || "Untitled",
+          start: (e.start.dateTime ?? e.start.date) ?? "",
+          end: (e.end.dateTime ?? e.end.date) ?? "",
+          allDay: !e.start.dateTime,
+          htmlLink: e.htmlLink,
+        }))
+        .sort((a, b) => a.start.localeCompare(b.start)),
+    };
+  } catch (e) {
+    return { events: [], calendarName: conn.conn.calendar_name ?? null, connected: true };
+  }
+}
+
 export async function scheduleJob(id: string, formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const start = String(formData.get("scheduled_start") || "");
