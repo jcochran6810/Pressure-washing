@@ -38,10 +38,11 @@ Open http://localhost:3000. Two ways in:
 
 ### Field operations
 - Jobs with status (scheduled → in progress → completed) and per-job photos
-- Calendar week view (drag-and-drop not yet — clicking goes to job detail)
+- **Drag-and-drop calendar** — grab a job card and drop it on a new day to reschedule (time-of-day preserved; appointment reminders are recreated automatically)
 - Appointment reminders auto-scheduled when a job is booked
 - Before/after photo gallery generator — public token URL
-- Photo annotations (schema-ready; UI TODO)
+- **Photo annotations** — draw arrows, boxes, circles, freehand, and text on photos with a built-in canvas editor; the annotated render is uploaded back to storage and used in galleries / receipts
+- **Contracts & recurring scheduling** — set up monthly / quarterly / annual service plans that auto-draft estimates (and optionally jobs) on schedule
 
 ### Pricing
 - Service catalog with per-unit pricing (flat / sqft / linear ft / hour / each)
@@ -56,12 +57,14 @@ Open http://localhost:3000. Two ways in:
 - Mix calculator for SH ratios and surfactant
 - Equipment tracking with service schedules
 
-### Accounting
+### Accounting & sync
 - Income from payments (auto)
 - Expense logging with categories, vendors, deductible flag, optional receipt URL
 - Live P&L for any period (month / last / quarter / YTD / last 12 months)
 - 6-month revenue vs expense bar chart
 - Vendor breakdown, payment method mix
+- **CSV exports** of invoices, payments, expenses, customers — drop-in for QuickBooks, Xero, Wave, FreshBooks
+- **QuickBooks Online live sync** via OAuth — push customers + invoices directly to your QBO company; see `/accounting`
 
 ### Marketing
 - Lead pipeline (new → contacted → quoted → won/lost)
@@ -75,10 +78,29 @@ Open http://localhost:3000. Two ways in:
 - Attach to a property for re-use
 - Measurements auto-set property GPS for future jobs
 
-### Reminders
+### Reminders & messaging
 - Per-job appointment reminder (default: 24h lead)
 - Per-customer recurring service reminder (default: 12 months)
 - POST `/api/cron/reminders` (with `CRON_SECRET`) sends due ones
+- POST `/api/cron/contracts` runs due recurring contracts (estimate/job auto-creation + next-run-date advance)
+- **Pre-made email + SMS templates** for estimate-send, invoice-send, receipt, payment reminder, appointment reminder, review request, contract renewal, waiver request (customisable per org)
+- **Telnyx SMS** — invoices, estimates, receipts, reminders, and waiver links can all be sent over SMS in addition to email; every SMS is logged in `sms_log`
+
+### Waivers & signed documents
+- Author one or more liability waivers per org (version + active flag)
+- Send via email or SMS — customer signs in-app with a touch / mouse signature pad
+- Audit trail: IP, user agent, timestamp, signed text, signature image stored in Supabase storage
+- Public sign URL at `/waiver/<token>`; signed waivers show up under the customer's service history
+
+### Customer service history
+- `/customers/<id>/history` aggregates every estimate, job, invoice, payment, photo, and signed waiver
+- Jobs grouped per property so you can see "when was 123 Maple last washed?" at a glance
+- Lifetime metrics: completed jobs, lifetime invoiced, lifetime paid, outstanding
+
+### Form validation, errors, and toasts
+- Every server action validates input via Zod (`src/lib/validation.ts`) — friendly errors instead of crashes
+- Global error boundary (`src/app/error.tsx` + `src/app/global-error.tsx`) catches anything that slips through
+- In-app toast system (`src/components/toast.tsx`) — surface success/error/info messages anywhere via `useToast()`
 
 ### Documents + Drive
 - "View / Print" generates clean HTML invoices/estimates
@@ -120,6 +142,19 @@ All tables enforce RLS via the `is_org_member(org_id)` function. Sign-up trigger
 categories / lead sources. Public read/update on quote, gallery, and review
 tables is scoped by random token.
 
+Run the latest migration before using the new features:
+
+```bash
+# from the Supabase dashboard SQL editor, paste the contents of:
+supabase/migrations/20260513120000_features_pack.sql
+```
+
+That migration adds: `contracts`, `contract_runs`, `waivers`, `waiver_signatures`,
+`photo_annotations`, `message_templates`, `accounting_exports`, `qbo_connections`,
+`sms_log`; plus an `annotated_url` column on `photo_attachments`, `qbo_id` /
+`qbo_synced_at` on `customers` and `invoices`, telnyx columns on `organizations`,
+and the public-quote RLS policy.
+
 ## Required environment variables
 
 | Variable | Required for |
@@ -132,7 +167,9 @@ tables is scoped by random token.
 | `RESEND_API_KEY` + `RESEND_FROM` | Email receipts, reminders, review requests |
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Google Drive integration |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Satellite measurement tool |
-| `CRON_SECRET` | Securing the reminders cron endpoint |
+| `TELNYX_API_KEY` + `TELNYX_FROM_NUMBER` | SMS sending |
+| `QBO_CLIENT_ID` + `QBO_CLIENT_SECRET` + `QBO_REDIRECT_URI` + `QBO_ENVIRONMENT` | QuickBooks Online sync |
+| `CRON_SECRET` | Securing the reminders + contracts cron endpoints |
 
 The app degrades gracefully — features without keys show clear "not configured"
 hints in Settings → Integrations.

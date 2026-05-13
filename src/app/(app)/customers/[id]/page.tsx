@@ -38,8 +38,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <p className="text-sm text-gray-600 capitalize">{customer.customer_type} customer</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Link href={`/customers/${customer.id}/history`} className="btn-secondary">📜 History</Link>
           <Link href={`/estimates/new?customer=${customer.id}`} className="btn-secondary">+ Estimate</Link>
           <Link href={`/jobs/new?customer=${customer.id}`} className="btn-secondary">+ Job</Link>
+          <Link href={`/contracts/new?customer=${customer.id}`} className="btn-secondary">+ Contract</Link>
           <Link href={`/invoices/new?customer=${customer.id}`} className="btn-primary">+ Invoice</Link>
         </div>
       </div>

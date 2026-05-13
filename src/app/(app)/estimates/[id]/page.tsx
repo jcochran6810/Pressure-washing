@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer } from "../actions";
+import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer, sendEstimateViaTemplate } from "../actions";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
@@ -38,7 +38,12 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
   const convert = convertEstimateToInvoice.bind(null, est.id);
   const saveDrive = saveEstimateToDrive.bind(null, est.id);
   const emailEst = emailEstimateToCustomer.bind(null, est.id);
+  const emailTpl = sendEstimateViaTemplate.bind(null, est.id, "email");
+  const smsTpl = sendEstimateViaTemplate.bind(null, est.id, "sms");
   const del = deleteEstimate.bind(null, est.id);
+  const cust: any = est.customers;
+  const hasEmail = !!cust?.email;
+  const hasPhone = !!(cust?.phone || cust?.mobile_phone);
 
   return (
     <div>
@@ -50,7 +55,9 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
         </div>
         <div className="flex flex-wrap gap-2">
           <a href={`/api/documents/estimates/${est.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
-          <form action={emailEst}><button className="btn-secondary" disabled={!(est.customers as any)?.email}>Email to customer</button></form>
+          <form action={emailEst}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
+          <form action={emailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>
+          <form action={smsTpl}><button className="btn-secondary" disabled={!hasPhone}>Send SMS</button></form>
           <form action={saveDrive}><button className="btn-secondary">Save to Drive</button></form>
           {est.status === "draft" && <form action={markSent}><button className="btn-secondary">Mark sent</button></form>}
           {(est.status === "sent" || est.status === "draft") && <form action={markAccepted}><button className="btn-secondary">Mark accepted</button></form>}

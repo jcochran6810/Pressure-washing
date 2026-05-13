@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
-import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer } from "../actions";
+import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, sendInvoiceViaTemplate } from "../actions";
+import { pushInvoiceToQboAction } from "@/app/(app)/accounting/actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
@@ -31,7 +32,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const createLink = createStripePaymentLink.bind(null, inv.id);
   const saveDrive = saveInvoiceToDrive.bind(null, inv.id);
   const emailInv = emailInvoiceToCustomer.bind(null, inv.id);
+  const sendEmailTpl = sendInvoiceViaTemplate.bind(null, inv.id, "email", "invoice_send");
+  const sendSmsTpl = sendInvoiceViaTemplate.bind(null, inv.id, "sms", "invoice_send");
+  const sendReminder = sendInvoiceViaTemplate.bind(null, inv.id, "email", "payment_reminder");
+  const sendReminderSms = sendInvoiceViaTemplate.bind(null, inv.id, "sms", "payment_reminder");
+  const pushQbo = pushInvoiceToQboAction.bind(null, inv.id);
   const del = deleteInvoice.bind(null, inv.id);
+  const cust: any = inv.customers;
+  const hasEmail = !!cust?.email;
+  const hasPhone = !!(cust?.phone || cust?.mobile_phone);
+  const isUnpaid = inv.status !== "paid" && inv.status !== "void";
 
   return (
     <div>
@@ -43,15 +53,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
         <div className="flex flex-wrap gap-2">
           <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
-          <form action={emailInv}><button className="btn-secondary" disabled={!(inv.customers as any)?.email}>Email to customer</button></form>
+          <form action={emailInv}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
+          <form action={sendEmailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>
+          <form action={sendSmsTpl}><button className="btn-secondary" disabled={!hasPhone}>Send SMS</button></form>
+          {isUnpaid && (
+            <>
+              <form action={sendReminder}><button className="btn-secondary" disabled={!hasEmail}>Email reminder</button></form>
+              <form action={sendReminderSms}><button className="btn-secondary" disabled={!hasPhone}>SMS reminder</button></form>
+            </>
+          )}
           <form action={saveDrive}><button className="btn-secondary">Save to Drive</button></form>
+          <form action={pushQbo}><button className="btn-secondary" disabled={!!(inv as any).qbo_id}>{(inv as any).qbo_id ? "✓ Synced to QBO" : "Push to QBO"}</button></form>
           {inv.status === "draft" && <form action={markSent}><button className="btn-secondary">Mark sent</button></form>}
           {inv.stripe_payment_link ? (
             <a href={inv.stripe_payment_link} target="_blank" rel="noopener" className="btn-secondary">Stripe link ↗</a>
           ) : (
             <form action={createLink}><button className="btn-secondary">Create Stripe link</button></form>
           )}
-          {inv.status !== "paid" && inv.status !== "void" && (
+          {isUnpaid && (
             <form action={markVoid}><button className="btn-ghost text-red-600">Void</button></form>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { ToastFromSearchParams, ToastProvider } from "@/components/toast";
 import { getSessionAndOrg } from "@/lib/org";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,13 +19,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   return (
-    <AppShell
-      orgName={organization?.name ?? "Your Business"}
-      userEmail={user.email ?? "Demo user"}
-      isDemo={!!organization?.is_demo}
-      badges={{ "/jobs": jobsCount ?? 0, "/invoices": invoicesCount ?? 0 }}
-    >
-      {children}
-    </AppShell>
+    <ToastProvider>
+      <ToastFromSearchParams />
+      <AppShell
+        orgName={organization?.name ?? "Your Business"}
+        userEmail={user.email ?? "Demo user"}
+        isDemo={!!organization?.is_demo}
+        badges={{ "/jobs": jobsCount ?? 0, "/invoices": invoicesCount ?? 0 }}
+      >
+        {children}
+      </AppShell>
+    </ToastProvider>
   );
 }

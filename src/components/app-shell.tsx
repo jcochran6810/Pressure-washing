@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { href: "/estimates", label: "Estimates", icon: "✎" },
   { href: "/jobs", label: "Jobs", icon: "⚒" },
   { href: "/calendar", label: "Calendar", icon: "▤" },
+  { href: "/contracts", label: "Contracts", icon: "↻" },
   { href: "/invoices", label: "Invoices", icon: "$" },
   { href: "/payments", label: "Payments", icon: "✓" },
   { href: "/services", label: "Services", icon: "⚐" },
@@ -23,7 +24,9 @@ const NAV: NavItem[] = [
   { href: "/expenses", label: "Expenses", icon: "−" },
   { href: "/leads", label: "Leads", icon: "★" },
   { href: "/campaigns", label: "Marketing", icon: "📣" },
-  { href: "/reports", label: "Accounting", icon: "📊" },
+  { href: "/reports", label: "Reports", icon: "📊" },
+  { href: "/accounting", label: "Accounting sync", icon: "⇄" },
+  { href: "/waivers", label: "Waivers", icon: "✍" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];
 
