@@ -34,6 +34,41 @@ export async function disconnectGoogleDrive() {
   revalidatePath("/settings");
 }
 
+export async function saveMessagingCredentials(formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const resend_api_key = String(formData.get("resend_api_key") || "").trim() || null;
+  const resend_from = String(formData.get("resend_from") || "").trim() || null;
+  const telnyx_api_key = String(formData.get("telnyx_api_key") || "").trim() || null;
+  const telnyx_from_number = String(formData.get("telnyx_from_number") || "").trim() || null;
+
+  await supabase
+    .from("org_messaging_credentials")
+    .upsert({
+      organization_id: organizationId,
+      resend_api_key,
+      resend_from,
+      telnyx_api_key,
+      telnyx_from_number,
+      updated_at: new Date().toISOString(),
+    } as any);
+  revalidatePath("/settings");
+}
+
+export async function clearMessagingCredentials() {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  await supabase
+    .from("org_messaging_credentials")
+    .update({
+      resend_api_key: null,
+      resend_from: null,
+      telnyx_api_key: null,
+      telnyx_from_number: null,
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq("organization_id", organizationId);
+  revalidatePath("/settings");
+}
+
 export async function setLinkedCalendar(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const calendar_id = String(formData.get("calendar_id") || "").trim() || null;

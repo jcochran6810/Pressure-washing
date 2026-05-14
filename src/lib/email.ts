@@ -6,15 +6,17 @@ type SendArgs = {
   subject: string;
   html: string;
   replyTo?: string;
+  apiKey?: string;
+  from?: string;
 };
 
 export type EmailResult = { ok: true; id: string } | { ok: false; reason: string };
 
 export async function sendEmail(args: SendArgs): Promise<EmailResult> {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "Suds <onboarding@resend.dev>";
+  const key = args.apiKey || process.env.RESEND_API_KEY;
+  const from = args.from || process.env.RESEND_FROM || "Suds <onboarding@resend.dev>";
   if (!key) {
-    return { ok: false, reason: "RESEND_API_KEY not set" };
+    return { ok: false, reason: "Email not configured for this account" };
   }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

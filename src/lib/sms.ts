@@ -1,5 +1,4 @@
-// Telnyx SMS sender. Set TELNYX_API_KEY and TELNYX_FROM_NUMBER in .env.local.
-// Uses fetch to avoid an extra dependency.
+// Telnyx SMS sender. Per-org credentials override platform env vars.
 
 type SmsResult = { ok: true; id: string } | { ok: false; reason: string };
 
@@ -7,15 +6,16 @@ type SendArgs = {
   to: string;
   body: string;
   from?: string;
+  apiKey?: string;
   messagingProfileId?: string;
 };
 
 export async function sendSms(args: SendArgs): Promise<SmsResult> {
-  const key = process.env.TELNYX_API_KEY;
+  const key = args.apiKey || process.env.TELNYX_API_KEY;
   const from = args.from || process.env.TELNYX_FROM_NUMBER || "";
-  if (!key) return { ok: false, reason: "TELNYX_API_KEY not set" };
+  if (!key) return { ok: false, reason: "Telnyx not configured for this account" };
   if (!from && !args.messagingProfileId) {
-    return { ok: false, reason: "Set TELNYX_FROM_NUMBER or pass a messagingProfileId" };
+    return { ok: false, reason: "No Telnyx from-number set for this account" };
   }
 
   const payload: Record<string, unknown> = {

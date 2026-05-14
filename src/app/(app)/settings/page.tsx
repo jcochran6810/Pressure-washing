@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
-import { updateOrganization, disconnectGoogleDrive } from "./actions";
+import { updateOrganization, disconnectGoogleDrive, saveMessagingCredentials, clearMessagingCredentials } from "./actions";
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
 import { CalendarPicker } from "@/components/calendar-picker";
@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string; msg?: string; qbo?: string }> }) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { google, msg, qbo } = await searchParams;
-  const [{ data: drive }, { data: qboConn }] = await Promise.all([
+  const [{ data: drive }, { data: qboConn }, { data: messagingCreds }] = await Promise.all([
     supabase.from("google_drive_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     (supabase as any).from("qbo_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
+    supabase.from("org_messaging_credentials").select("*").eq("organization_id", organizationId).maybeSingle(),
   ]);
 
   // If Google is connected with calendar scope, fetch the user's calendar list so
@@ -155,21 +156,114 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </section>
 
       <section className="card-padded mb-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h2 className="font-semibold">Messaging add-on</h2>
+          <span className="badge bg-brand-100 text-brand-700">Bring your own keys</span>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Connect your own Resend and Telnyx accounts so emails and SMS are sent directly through your accounts.
+          You only pay your providers — no platform send fees. Leave fields blank to keep messaging off for this business.
+        </p>
+        <form action={saveMessagingCredentials} className="space-y-4">
+          <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="font-semibold text-sm">Email — Resend</h3>
+                <p className="text-xs text-gray-600">
+                  Sign up at{" "}
+                  <a href="https://resend.com/signup" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">
+                    resend.com
+                  </a>
+                  , verify your sending domain, and create an API key. Free tier covers 3,000 emails/month.
+                </p>
+              </div>
+              {messagingCreds?.resend_api_key ? (
+                <span className="badge bg-green-100 text-green-700">Active</span>
+              ) : (
+                <span className="badge bg-gray-100 text-gray-700">Not set up</span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="text-xs">
+                Resend API key
+                <input
+                  type="password"
+                  name="resend_api_key"
+                  defaultValue={messagingCreds?.resend_api_key ?? ""}
+                  placeholder={messagingCreds?.resend_api_key ? "•••••• (saved)" : "re_..."}
+                  className="w-full mt-0.5"
+                />
+              </label>
+              <label className="text-xs">
+                From address
+                <input
+                  type="text"
+                  name="resend_from"
+                  defaultValue={messagingCreds?.resend_from ?? ""}
+                  placeholder={`${organization?.name ?? "Your Business"} <hello@yourdomain.com>`}
+                  className="w-full mt-0.5"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="font-semibold text-sm">SMS — Telnyx</h3>
+                <p className="text-xs text-gray-600">
+                  Sign up at{" "}
+                  <a href="https://telnyx.com/sign-up" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">
+                    telnyx.com
+                  </a>
+                  , buy a phone number, register for 10DLC, and create a v2 API key. Roughly $0.004/segment.
+                </p>
+              </div>
+              {messagingCreds?.telnyx_api_key ? (
+                <span className="badge bg-green-100 text-green-700">Active</span>
+              ) : (
+                <span className="badge bg-gray-100 text-gray-700">Not set up</span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="text-xs">
+                Telnyx API key
+                <input
+                  type="password"
+                  name="telnyx_api_key"
+                  defaultValue={messagingCreds?.telnyx_api_key ?? ""}
+                  placeholder={messagingCreds?.telnyx_api_key ? "•••••• (saved)" : "KEY..."}
+                  className="w-full mt-0.5"
+                />
+              </label>
+              <label className="text-xs">
+                Sending phone number
+                <input
+                  type="tel"
+                  name="telnyx_from_number"
+                  defaultValue={messagingCreds?.telnyx_from_number ?? ""}
+                  placeholder="+15551234567"
+                  className="w-full mt-0.5"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" className="btn-primary text-sm">Save messaging keys</button>
+            {(messagingCreds?.resend_api_key || messagingCreds?.telnyx_api_key) && (
+              <ClearMessagingButton action={clearMessagingCredentials} />
+            )}
+          </div>
+        </form>
+      </section>
+
+      <section className="card-padded mb-5">
         <h2 className="font-semibold mb-1">Platform services</h2>
         <p className="text-xs text-gray-500 mb-3">
           These run on the app's shared infrastructure — nothing for you to set up.
         </p>
         <div className="space-y-2 text-sm">
-          <PlatformServiceRow
-            title="Email delivery"
-            description="Sends estimate, invoice, and receipt emails to your customers."
-            active={emailConfigured}
-          />
-          <PlatformServiceRow
-            title="SMS delivery"
-            description="Sends appointment reminders and links via text message."
-            active={telnyxConfigured}
-          />
           <PlatformServiceRow
             title="Satellite imagery"
             description="Powers polygon measurements on satellite maps."
@@ -180,6 +274,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             description="Adds a Pay Now link to invoices."
             active={stripeConfigured}
             note="Currently routes payments to the platform Stripe account. Per-business Stripe Connect coming soon."
+          />
+          <PlatformServiceRow
+            title="Email & SMS fallback"
+            description="If you haven't entered your own messaging keys above, the platform routes through its shared providers."
+            active={emailConfigured || telnyxConfigured}
+            note={
+              emailConfigured && telnyxConfigured
+                ? "Both providers configured."
+                : emailConfigured
+                  ? "Only email fallback is configured."
+                  : telnyxConfigured
+                    ? "Only SMS fallback is configured."
+                    : "No platform fallback configured — set up the messaging add-on above to send."
+            }
           />
         </div>
       </section>
@@ -339,6 +447,16 @@ function Chevron() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6" />
     </svg>
+  );
+}
+
+function ClearMessagingButton({ action }: { action: () => Promise<void> }) {
+  return (
+    <form action={action}>
+      <button type="submit" className="text-xs text-red-600 hover:underline">
+        Clear messaging keys
+      </button>
+    </form>
   );
 }
 

@@ -421,6 +421,12 @@ export type Database = {
         Update: { created_at?: string | null; organization_id?: string; role?: string; user_id?: string };
         Relationships: [];
       };
+      org_messaging_credentials: {
+        Row: { organization_id: string; resend_api_key: string | null; resend_from: string | null; telnyx_api_key: string | null; telnyx_from_number: string | null; messaging_addon_enabled: boolean | null; created_at: string | null; updated_at: string | null };
+        Insert: { organization_id: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Update: { organization_id?: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
       organizations: {
         Row: { address_line1: string | null; address_line2: string | null; city: string | null; country: string | null; created_at: string | null; currency: string | null; email: string | null; estimate_prefix: string | null; id: string; invoice_prefix: string | null; logo_url: string | null; name: string; next_estimate_number: number | null; next_invoice_number: number | null; phone: string | null; postal_code: string | null; state: string | null; stripe_account_id: string | null; tax_rate: number | null; updated_at: string | null; website: string | null };
         Insert: { address_line1?: string | null; address_line2?: string | null; city?: string | null; country?: string | null; created_at?: string | null; currency?: string | null; email?: string | null; estimate_prefix?: string | null; id?: string; invoice_prefix?: string | null; logo_url?: string | null; name: string; next_estimate_number?: number | null; next_invoice_number?: number | null; phone?: string | null; postal_code?: string | null; state?: string | null; stripe_account_id?: string | null; tax_rate?: number | null; updated_at?: string | null; website?: string | null };

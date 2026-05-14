@@ -1,7 +1,6 @@
 "use server";
 
 import { createServerClient } from "@supabase/ssr";
-import { sendEmail } from "@/lib/email";
 import { redirect } from "next/navigation";
 
 function publicClient() {
@@ -37,7 +36,8 @@ export async function submitReview(token: string, formData: FormData) {
       <p>${comment || "(no comment)"}</p>
       <p>Contact: ${cust.email || ""} ${cust.phone || ""}</p>
     </body></html>`;
-    await sendEmail({
+    const { sendOrgEmail } = await import("@/lib/org-messaging");
+    await sendOrgEmail((fb as any).organization_id, {
       to: (fb.organizations as any).email,
       subject: `⚠️ ${rating}-star feedback received`,
       html,

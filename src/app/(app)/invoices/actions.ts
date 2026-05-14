@@ -2,7 +2,8 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
-import { sendEmail, receiptHtml } from "@/lib/email";
+import { receiptHtml } from "@/lib/email";
+import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
 import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
@@ -137,7 +138,7 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
       remainingBalance: formatCurrency(balance, org?.currency ?? "USD"),
       fullyPaid: balance === 0,
     });
-    const result = await sendEmail({
+    const result = await sendOrgEmail(organizationId, {
       to: cust.email,
       subject: `Receipt — Invoice ${inv.invoice_number}`,
       html,
@@ -181,7 +182,7 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
           <p style="color:#64748b;font-size:12px;">If you'd rather just reply with feedback, we read every message.</p>
         </div>
       </body></html>`;
-      await sendEmail({ to: cust.email, subject, html, replyTo: org.email ?? undefined });
+      await sendOrgEmail(organizationId, { to: cust.email, subject, html, replyTo: org.email ?? undefined });
     }
 
     // Schedule a recurring service reminder
@@ -294,7 +295,7 @@ export async function emailInvoiceToCustomer(id: string) {
     }
   }
 
-  const { organization, inv } = await loadInvoiceForDoc(id);
+  const { organizationId, organization, inv } = await loadInvoiceForDoc(id);
   const cust: any = inv.customers;
   if (!cust?.email) throw new Error("Customer has no email.");
 
@@ -324,7 +325,7 @@ export async function emailInvoiceToCustomer(id: string) {
     : docHtml;
 
   const subject = inv.status === "paid" ? `Receipt — Invoice ${inv.invoice_number}` : `Invoice ${inv.invoice_number} from ${organization?.name}`;
-  await sendEmail({ to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
+  await sendOrgEmail(organizationId, { to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
   await setInvoiceStatus(id, inv.status === "draft" ? "sent" : inv.status);
 }
 

@@ -1,7 +1,8 @@
 "use server";
 
 import { getSessionAndOrg } from "@/lib/org";
-import { sendEmail, receiptHtml } from "@/lib/email";
+import { receiptHtml } from "@/lib/email";
+import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { customerDisplayName, formatCurrency, formatDate } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -149,7 +150,7 @@ export async function bulkEmailReceiptsToCustomers(ids: string[]): Promise<BulkR
       const ctx = await loadReceiptContext(id);
       const email = ctx.customer?.email;
       if (!email) throw new Error("Customer has no email");
-      const sent = await sendEmail({
+      const sent = await sendOrgEmail(organizationId, {
         to: email,
         subject: ctx.subject,
         html: ctx.html,

@@ -1,8 +1,10 @@
 // High-level send: pick an org-customised template (or default), render variables,
 // and dispatch via email (Resend) or SMS (Telnyx). Records SMS in sms_log.
+// Per-org credentials (BYOC) override the platform env vars when present.
 
 import { sendEmail } from "@/lib/email";
 import { sendSms, normalizePhone } from "@/lib/sms";
+import { loadOrgMessagingCreds } from "@/lib/org-messaging";
 import {
   DEFAULT_TEMPLATES,
   pickTemplate,
@@ -36,10 +38,13 @@ export type SendResult =
   | { ok: false; reason: string };
 
 export async function sendTemplated(args: SendArgs): Promise<SendResult> {
-  const { data: rows } = await args.supabase
-    .from("message_templates")
-    .select("kind, channel, subject, body, is_default")
-    .eq("organization_id", args.organizationId);
+  const [{ data: rows }, creds] = await Promise.all([
+    args.supabase
+      .from("message_templates")
+      .select("kind, channel, subject, body, is_default")
+      .eq("organization_id", args.organizationId),
+    loadOrgMessagingCreds(args.organizationId),
+  ]);
 
   const tpl =
     pickTemplate(rows ?? [], args.kind, args.channel) ??
@@ -56,6 +61,8 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
       subject: subject || "Message",
       html: plainTextToEmailHtml(body),
       replyTo: args.replyToEmail ?? undefined,
+      apiKey: creds.resendApiKey ?? undefined,
+      from: creds.resendFrom ?? undefined,
     });
     return result.ok
       ? { ok: true, channel: "email", id: result.id, renderedSubject: subject, renderedBody: body }
@@ -65,14 +72,20 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
   // SMS path
   const to = normalizePhone(args.to.phone);
   if (!to) return { ok: false, reason: "Customer has no valid phone number" };
-  const smsResult = await sendSms({ to, body, from: args.fromNumber ?? undefined });
+  const fromNumber = args.fromNumber ?? creds.telnyxFromNumber ?? undefined;
+  const smsResult = await sendSms({
+    to,
+    body,
+    from: fromNumber,
+    apiKey: creds.telnyxApiKey ?? undefined,
+  });
   // Log every attempt
   try {
     await args.supabase.from("sms_log").insert({
       organization_id: args.organizationId,
       customer_id: args.customerId ?? null,
       to_number: to,
-      from_number: args.fromNumber ?? process.env.TELNYX_FROM_NUMBER ?? null,
+      from_number: fromNumber ?? process.env.TELNYX_FROM_NUMBER ?? null,
       body,
       provider: "telnyx",
       provider_id: smsResult.ok ? smsResult.id : null,

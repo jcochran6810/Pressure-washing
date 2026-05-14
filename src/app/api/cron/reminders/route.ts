@@ -2,7 +2,7 @@
 // or supabase scheduled function). Authorize via CRON_SECRET header.
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { sendEmail } from "@/lib/email";
+import { sendOrgEmail } from "@/lib/org-messaging";
 
 export const runtime = "nodejs";
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         <p style="color:#64748b;font-size:12px;margin-top:24px;">${org?.name}${org?.email ? ` · ${org.email}` : ""}</p>
       </div>
     </body></html>`;
-    const result = await sendEmail({ to: c.email, subject, html, replyTo: org?.email });
+    const result = await sendOrgEmail((r as any).organization_id, { to: c.email, subject, html, replyTo: org?.email });
     await supabase.from("customer_reminders").update({
       status: result.ok ? "sent" : "failed",
       sent_at: result.ok ? new Date().toISOString() : null,

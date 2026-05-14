@@ -1,7 +1,7 @@
 "use server";
 
 import { getSessionAndOrg } from "@/lib/org";
-import { sendEmail } from "@/lib/email";
+import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
 import { estimateSchema, parseForm } from "@/lib/validation";
@@ -269,10 +269,10 @@ export async function saveEstimateToDrive(id: string) {
 }
 
 export async function emailEstimateToCustomer(id: string) {
-  const { organization, est } = await loadEstimateForDoc(id);
+  const { organizationId, organization, est } = await loadEstimateForDoc(id);
   const cust: any = est.customers;
   if (!cust?.email) throw new Error("Customer has no email.");
-  await sendEmail({
+  await sendOrgEmail(organizationId, {
     to: cust.email,
     subject: `Estimate ${est.estimate_number} from ${organization?.name}`,
     html: estimateDocHtml(organization, est),
