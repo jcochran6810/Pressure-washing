@@ -19,6 +19,8 @@ export default async function DashboardPage() {
     { count: overdueCount },
     { count: draftCount },
     { count: newLeadCount },
+    { count: customerCount },
+    { count: servicesCount },
     { count: openFollowUpsCount },
     { data: openInvoices },
     { data: upcomingJobs },
@@ -33,6 +35,8 @@ export default async function DashboardPage() {
     supabase.from("invoices").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "overdue"),
     supabase.from("estimates").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "draft"),
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "new"),
+    supabase.from("customers").select("*", { count: "exact", head: true }).eq("organization_id", organizationId),
+    supabase.from("services").select("*", { count: "exact", head: true }).eq("organization_id", organizationId),
     (supabase as any).from("follow_ups").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("completed", false),
     supabase.from("invoices").select("id, invoice_number, total, balance_due, status, due_date, customers(first_name, last_name, company_name)").eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]).order("due_date", { ascending: true }).limit(5),
     supabase.from("jobs").select("id, title, scheduled_start, status, total_amount, customers(first_name, last_name, company_name)").eq("organization_id", organizationId).gte("scheduled_start", new Date().toISOString()).lte("scheduled_start", weekEnd.toISOString()).order("scheduled_start", { ascending: true }).limit(8),
@@ -57,6 +61,10 @@ export default async function DashboardPage() {
   const lowStockItems = (lowStock ?? []).filter((c) => (c.current_stock ?? 0) <= (c.reorder_level ?? 0));
 
   const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const isFreshOrg =
+    (customerCount ?? 0) === 0 &&
+    (servicesCount ?? 0) === 0 &&
+    !todayJobs?.length;
 
   return (
     <div id="overview">
@@ -64,6 +72,29 @@ export default async function DashboardPage() {
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Today</h1>
         <p className="mt-1 text-sm text-gray-600">{dateLabel}</p>
       </div>
+
+      {isFreshOrg && (
+        <section className="card-padded mb-5 border-brand-200 bg-brand-50">
+          <h2 className="font-semibold text-brand-800">Welcome — let's get you set up.</h2>
+          <p className="text-xs text-brand-700 mt-1 mb-3">
+            Three quick taps and you'll have a working catalog, your first customer, and an estimate ready to send.
+          </p>
+          <ol className="space-y-2 text-sm">
+            <li className="flex items-center justify-between gap-2">
+              <span><strong>1.</strong> Pick your trade in Settings → Business type.</span>
+              <Link href="/settings" className="btn-secondary text-xs whitespace-nowrap">Settings</Link>
+            </li>
+            <li className="flex items-center justify-between gap-2">
+              <span><strong>2.</strong> Load your trade's starter services + custom fields.</span>
+              <Link href="/services" className="btn-secondary text-xs whitespace-nowrap">Services</Link>
+            </li>
+            <li className="flex items-center justify-between gap-2">
+              <span><strong>3.</strong> Add your first customer and send an estimate.</span>
+              <Link href="/customers/new" className="btn-primary text-xs whitespace-nowrap">+ New customer</Link>
+            </li>
+          </ol>
+        </section>
+      )}
 
       {/* TODAY — what's on deck right now. Big touch targets for in-the-truck use. */}
       <section id="this-week" className="mb-6">
