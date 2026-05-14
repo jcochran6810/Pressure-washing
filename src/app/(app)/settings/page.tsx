@@ -14,7 +14,7 @@ import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/li
 import { CalendarPicker } from "@/components/calendar-picker";
 import { qboConfigured } from "@/lib/qbo";
 import { isEncryptionAvailable } from "@/lib/crypto";
-import { getOrgUsage, TIERS, type Tier } from "@/lib/billing";
+import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { isConnectConfigured } from "@/lib/stripe-connect";
 
@@ -40,7 +40,9 @@ export default async function SettingsPage({
   ]);
   const messagingMode: "platform" | "byoc" =
     (messagingCreds?.messaging_mode === "byoc" ? "byoc" : "platform");
-  const subscriptionTier = (organization as any)?.subscription_tier ?? "solo";
+  const subscriptionTier = (organization as any)?.subscription_tier ?? "basic";
+  const trialEndsAt = (organization as any)?.trial_ends_at ?? null;
+  const subscriptionStatus = (organization as any)?.subscription_status ?? null;
   const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
   const encryptionReady = isEncryptionAvailable();
   const stripeConnected = Boolean(getStripe());
@@ -91,6 +93,8 @@ export default async function SettingsPage({
         usage={usage}
         stripeReady={stripeConnected}
         stripeCustomerId={stripeCustomerId}
+        trialEndsAt={trialEndsAt}
+        subscriptionStatus={subscriptionStatus}
       />
 
       <section className="card-padded mb-5">
@@ -610,14 +614,21 @@ function SubscriptionCard({
   usage,
   stripeReady,
   stripeCustomerId,
+  trialEndsAt,
+  subscriptionStatus,
 }: {
   currentTier: Tier;
   usage: Awaited<ReturnType<typeof getOrgUsage>>;
   stripeReady: boolean;
   stripeCustomerId: string | null;
+  trialEndsAt: string | null;
+  subscriptionStatus: string | null;
 }) {
-  const cur = TIERS[currentTier] ?? TIERS.solo;
-  const tiersOrder: Tier[] = ["free", "solo", "pro"];
+  const cur = TIERS[currentTier] ?? TIERS.basic;
+  const trial = trialStateFor(trialEndsAt);
+  const subActive = hasActiveSubscription(subscriptionStatus);
+  const trialExpired = !trial.active && !subActive;
+
   return (
     <section className="card-padded mb-5">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
@@ -625,6 +636,21 @@ function SubscriptionCard({
         <span className="badge bg-brand-100 text-brand-700">{cur.label} · ${cur.monthlyPrice}/mo</span>
       </div>
       <p className="text-xs text-gray-500 mb-3">{cur.description}</p>
+
+      {trial.active && !subActive && (
+        <div className="mb-4 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md p-3">
+          <strong>Free trial active.</strong> You have {trial.daysRemaining}{" "}
+          {trial.daysRemaining === 1 ? "day" : "days"} left on your {TRIAL_DAYS}-day trial. Pick a plan below
+          before {trial.endsAt?.toLocaleDateString() ?? "your trial ends"} to keep your account active —
+          you won't be charged until then.
+        </div>
+      )}
+      {trialExpired && (
+        <div className="mb-4 text-xs text-red-800 bg-red-50 border border-red-200 rounded-md p-3">
+          <strong>Trial ended.</strong> Choose a plan below to re-activate messaging and the rest of your
+          account.
+        </div>
+      )}
 
       {!usage.byoc && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -639,14 +665,20 @@ function SubscriptionCard({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {tiersOrder.map((id) => {
+        {TIER_ORDER.map((id) => {
           const t = TIERS[id];
-          const isCurrent = id === currentTier;
-          const upgradeable = !isCurrent && id !== "free" && stripeReady;
+          const isCurrent = id === currentTier && subActive;
+          const ctaLabel = subActive
+            ? isCurrent
+              ? "Current plan"
+              : t.monthlyPrice > cur.monthlyPrice
+                ? `Upgrade to ${t.label}`
+                : `Switch to ${t.label}`
+            : `Start ${TRIAL_DAYS}-day free trial`;
           return (
             <div
               key={id}
-              className={`border rounded-lg p-3 ${
+              className={`border rounded-lg p-3 flex flex-col ${
                 isCurrent ? "border-brand-300 bg-brand-50" : "border-gray-200"
               }`}
             >
@@ -654,25 +686,26 @@ function SubscriptionCard({
                 <h3 className="font-semibold text-sm">{t.label}</h3>
                 <span className="text-xs text-gray-500">${t.monthlyPrice}/mo</span>
               </div>
-              <p className="text-xs text-gray-600">{t.description}</p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                {t.emailPerMonth.toLocaleString()} email · {t.smsPerMonth.toLocaleString()} SMS / month
-              </p>
+              <p className="text-xs text-gray-600 mb-2">{t.description}</p>
+              <ul className="text-[11px] text-gray-700 space-y-1 mb-3 flex-1">
+                {t.features.map((f) => (
+                  <li key={f} className="flex gap-1.5">
+                    <span aria-hidden className="text-brand-600">✓</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
               {isCurrent ? (
-                <p className="text-[11px] text-brand-700 font-medium mt-2">Current plan</p>
-              ) : upgradeable ? (
+                <p className="text-[11px] text-brand-700 font-medium">Current plan</p>
+              ) : stripeReady ? (
                 <a
                   href={`/api/billing/checkout?tier=${id}`}
-                  className="btn-primary text-xs mt-2 inline-block"
+                  className="btn-primary text-xs inline-block text-center"
                 >
-                  {currentTier === "free" || (currentTier === "solo" && id === "pro")
-                    ? `Upgrade to ${t.label}`
-                    : `Switch to ${t.label}`}
+                  {ctaLabel}
                 </a>
-              ) : !stripeReady ? (
-                <p className="text-[11px] text-gray-400 mt-2">Billing not configured</p>
               ) : (
-                <p className="text-[11px] text-gray-400 mt-2">Free tier — cancel from portal</p>
+                <p className="text-[11px] text-gray-400">Billing not configured</p>
               )}
             </div>
           );
@@ -687,7 +720,8 @@ function SubscriptionCard({
       {!stripeReady && (
         <p className="text-[11px] text-gray-500 mt-3">
           Operator: set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_BILLING_WEBHOOK_SECRET</code>, and price-id env
-          vars (<code>STRIPE_PRICE_ID_SOLO</code>, <code>STRIPE_PRICE_ID_PRO</code>) to enable in-app upgrades.
+          vars (<code>STRIPE_PRICE_ID_BASIC</code>, <code>STRIPE_PRICE_ID_PLUS</code>, <code>STRIPE_PRICE_ID_PRO</code>)
+          to enable in-app upgrades.
         </p>
       )}
     </section>

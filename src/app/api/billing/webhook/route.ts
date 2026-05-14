@@ -1,7 +1,7 @@
 // Stripe webhook for subscription lifecycle. Wires:
-//   checkout.session.completed       → set tier, store subscription_id, status
-//   customer.subscription.updated    → update status (e.g. past_due, canceled)
-//   customer.subscription.deleted    → drop tier back to free, clear sub_id
+//   checkout.session.completed       → set tier, store subscription_id, status, trial_ends_at
+//   customer.subscription.updated    → update tier/status + trial_ends_at (e.g. past_due, trialing)
+//   customer.subscription.deleted    → drop tier back to basic, clear sub_id
 //
 // Configure the endpoint in Stripe (Developers → Webhooks) and put the signing
 // secret in STRIPE_BILLING_WEBHOOK_SECRET. Distinct from the existing payment
@@ -39,28 +39,35 @@ export async function POST(request: Request) {
 
   const supabase = adminClient();
 
-  async function setOrgTier(orgId: string, tier: Tier, status: string | null, subId: string | null) {
-    if (!(tier in TIERS)) tier = "solo";
-    await (supabase as any)
-      .from("organizations")
-      .update({
-        subscription_tier: tier,
-        subscription_status: status,
-        stripe_subscription_id: subId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orgId);
+  async function applySubUpdate(
+    orgId: string,
+    tier: Tier,
+    status: string | null,
+    subId: string | null,
+    trialEnd: number | null,
+  ) {
+    if (!(tier in TIERS)) tier = "basic";
+    const patch: Record<string, unknown> = {
+      subscription_tier: tier,
+      subscription_status: status,
+      stripe_subscription_id: subId,
+      updated_at: new Date().toISOString(),
+    };
+    if (trialEnd) patch.trial_ends_at = new Date(trialEnd * 1000).toISOString();
+    await (supabase as any).from("organizations").update(patch).eq("id", orgId);
   }
 
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as any;
       const orgId = session.metadata?.organization_id;
-      const tier = (session.metadata?.tier as Tier) || "solo";
+      const tier = (session.metadata?.tier as Tier) || "basic";
       const subId = (session.subscription as string) || null;
       const customerId = (session.customer as string) || null;
       if (orgId) {
-        await setOrgTier(orgId, tier, "active", subId);
+        // The session itself doesn't carry trial_end — that comes through on
+        // the customer.subscription.updated event Stripe fires right after.
+        await applySubUpdate(orgId, tier, "active", subId, null);
         if (customerId) {
           await (supabase as any)
             .from("organizations")
@@ -68,18 +75,18 @@ export async function POST(request: Request) {
             .eq("id", orgId);
         }
       }
-    } else if (event.type === "customer.subscription.updated") {
+    } else if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
       const sub = event.data.object as any;
       const orgId = sub.metadata?.organization_id;
-      const tier = (sub.metadata?.tier as Tier) || "solo";
+      const tier = (sub.metadata?.tier as Tier) || "basic";
       if (orgId) {
-        await setOrgTier(orgId, tier, sub.status ?? "unknown", sub.id);
+        await applySubUpdate(orgId, tier, sub.status ?? "unknown", sub.id, sub.trial_end ?? null);
       }
     } else if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object as any;
       const orgId = sub.metadata?.organization_id;
       if (orgId) {
-        await setOrgTier(orgId, "free", "canceled", null);
+        await applySubUpdate(orgId, "basic", "canceled", null, null);
       }
     }
   } catch (e) {

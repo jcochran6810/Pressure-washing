@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
-import { stripePriceIdFor, TIERS, type Tier } from "@/lib/billing";
+import { stripePriceIdFor, TIERS, TRIAL_DAYS, trialStateFor, type Tier } from "@/lib/billing";
 import { getSessionAndOrg } from "@/lib/org";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tierParam = url.searchParams.get("tier") as Tier | null;
   if (!tierParam || !(tierParam in TIERS)) {
-    return NextResponse.json({ error: "tier query param required (solo|pro)" }, { status: 400 });
+    return NextResponse.json({ error: "tier query param required (basic|plus|pro)" }, { status: 400 });
   }
   const stripe = getStripe();
   if (!stripe) return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
@@ -28,7 +28,6 @@ export async function GET(request: Request) {
 
   const { supabase, organizationId, organization, user } = await getSessionAndOrg();
 
-  // Reuse the existing Stripe customer if we've created one before.
   let customerId = (organization as any)?.stripe_customer_id ?? null;
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -43,6 +42,12 @@ export async function GET(request: Request) {
       .eq("id", organizationId);
   }
 
+  // Honor the org's remaining in-app trial: if they still have free days left
+  // give Stripe the matching trial_period_days so they aren't double-billed.
+  // Otherwise fall back to the standard 10-day trial for first-time upgraders.
+  const trial = trialStateFor((organization as any)?.trial_ends_at);
+  const trialPeriodDays = trial.active ? trial.daysRemaining : TRIAL_DAYS;
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -50,7 +55,10 @@ export async function GET(request: Request) {
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${appUrl}/settings?billing=updated`,
     cancel_url: `${appUrl}/settings?billing=canceled`,
-    subscription_data: { metadata: { organization_id: organizationId, tier: tierParam } },
+    subscription_data: {
+      trial_period_days: trialPeriodDays,
+      metadata: { organization_id: organizationId, tier: tierParam },
+    },
     metadata: { organization_id: organizationId, tier: tierParam },
   });
 
