@@ -30,13 +30,29 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
 
-  const [{ data: payments }, { data: expenses }, { data: categories }, { data: outstanding }, { data: monthlySeries }] = await Promise.all([
+  const [
+    { data: payments },
+    { data: expenses },
+    { data: outstanding },
+    { data: estimatesInPeriod },
+    { data: jobsCompletedInPeriod },
+    { data: leadsInPeriod },
+    { data: recurringActive },
+    { data: estimateLineItems },
+  ] = await Promise.all([
     supabase.from("payments").select("amount, payment_date, payment_method, customer_id").eq("organization_id", organizationId).gte("payment_date", startStr).lte("payment_date", endStr),
     supabase.from("expenses").select("amount, expense_date, vendor, category_id, tax_deductible, expense_categories(name)").eq("organization_id", organizationId).gte("expense_date", startStr).lte("expense_date", endStr),
-    supabase.from("expense_categories").select("*").eq("organization_id", organizationId),
     supabase.from("invoices").select("balance_due, due_date, status").eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]),
-    // For trend: last 6 months payments + expenses
-    supabase.rpc as any, // placeholder removed below
+    // For win-rate: estimates created in the period, by status
+    supabase.from("estimates").select("status, total").eq("organization_id", organizationId).gte("issue_date", startStr).lte("issue_date", endStr),
+    // For "jobs completed" + average job value
+    supabase.from("jobs").select("total_amount, actual_end").eq("organization_id", organizationId).eq("status", "completed").gte("actual_end", start.toISOString()).lte("actual_end", end.toISOString()),
+    // Best lead sources
+    supabase.from("leads").select("source_id, status, lead_sources(name)").eq("organization_id", organizationId).gte("created_at", start.toISOString()).lte("created_at", end.toISOString()),
+    // Active recurring jobs for monthly recurring revenue
+    (supabase as any).from("recurring_jobs").select("default_price, recurrence_kind, recurrence_interval").eq("organization_id", organizationId).eq("active", true),
+    // Top services (by line item revenue inside the period)
+    supabase.from("estimate_line_items").select("description, total, service_id, estimates!inner(organization_id, issue_date, status)").eq("estimates.organization_id", organizationId).gte("estimates.issue_date", startStr).lte("estimates.issue_date", endStr),
   ]);
 
   // Trend: pull last 6 months payments and expenses separately
@@ -96,6 +112,66 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   });
   const maxBar = Math.max(1, ...months.flatMap((m) => [m.revenue, m.expense]));
 
+  // ---- Operational metrics ----
+
+  // Estimate win rate: accepted+converted divided by (accepted+converted+declined+expired)
+  const estStatuses = (estimatesInPeriod ?? []).map((e: any) => e.status);
+  const wonCount = estStatuses.filter((s: string) => s === "accepted" || s === "converted").length;
+  const lostCount = estStatuses.filter((s: string) => s === "declined" || s === "expired").length;
+  const decidedCount = wonCount + lostCount;
+  const winRate = decidedCount > 0 ? (wonCount / decidedCount) * 100 : null;
+
+  // Average job value (completed jobs in period)
+  const completedTotals = (jobsCompletedInPeriod ?? []).map((j: any) => Number(j.total_amount ?? 0));
+  const completedCount = completedTotals.length;
+  const avgJobValue = completedCount > 0 ? completedTotals.reduce((s, n) => s + n, 0) / completedCount : 0;
+
+  // Lead sources (top 5)
+  const sourceMap = new Map<string, { name: string; total: number; won: number }>();
+  for (const l of (leadsInPeriod ?? []) as any[]) {
+    const name = l.lead_sources?.name || "Unknown";
+    const cur = sourceMap.get(name) ?? { name, total: 0, won: 0 };
+    cur.total += 1;
+    if (l.status === "won") cur.won += 1;
+    sourceMap.set(name, cur);
+  }
+  const topSources = Array.from(sourceMap.values()).sort((a, b) => b.total - a.total).slice(0, 5);
+
+  // Recurring monthly revenue (rough — annualised then /12 per template)
+  function approximateMonthlyRevenue(r: any): number {
+    const price = Number(r.default_price ?? 0);
+    const interval = Math.max(1, Number(r.recurrence_interval ?? 1));
+    const visitsPerMonth = (() => {
+      switch (r.recurrence_kind) {
+        case "daily": return 30 / interval;
+        case "weekly": return 4.33 / interval;
+        case "biweekly": return 2.17;
+        case "triweekly": return 1.45;
+        case "monthly": return 1 / interval;
+        case "quarterly": return 1 / 3;
+        case "seasonal": return 1 / 3;
+        case "semiannual": return 1 / 6;
+        case "annual": return 1 / 12;
+        case "custom_days": return 30 / interval;
+        default: return 0;
+      }
+    })();
+    return price * visitsPerMonth;
+  }
+  const recurringMRR = (recurringActive ?? []).reduce((s: number, r: any) => s + approximateMonthlyRevenue(r), 0);
+
+  // Top services by line-item revenue. Falls back to description when service_id is null.
+  const serviceMap = new Map<string, number>();
+  for (const li of (estimateLineItems ?? []) as any[]) {
+    const key = li.description || "Unnamed";
+    serviceMap.set(key, (serviceMap.get(key) ?? 0) + Number(li.total ?? 0));
+  }
+  const topServices = Array.from(serviceMap.entries())
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8);
+  const topServiceMax = topServices[0]?.total ?? 1;
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
@@ -115,6 +191,72 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <Kpi label="Expenses" value={formatCurrency(totalExpense)} tone="warn" />
         <Kpi label="Net profit" value={formatCurrency(net)} tone={net >= 0 ? "ok" : "warn"} sub={`${margin.toFixed(1)}% margin`} />
         <Kpi label="Outstanding AR" value={formatCurrency(outstandingTotal)} sub={`${outstanding?.length ?? 0} invoices`} />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <Kpi
+          label="Estimate win rate"
+          value={winRate == null ? "—" : `${winRate.toFixed(0)}%`}
+          sub={`${wonCount} won / ${decidedCount} decided`}
+          tone={winRate != null && winRate >= 50 ? "ok" : winRate != null ? "warn" : undefined}
+        />
+        <Kpi label="Jobs completed" value={String(completedCount)} sub={`avg ${formatCurrency(avgJobValue)}`} />
+        <Kpi label="Recurring MRR" value={formatCurrency(recurringMRR)} sub={`${recurringActive?.length ?? 0} active templates`} />
+        <Kpi
+          label="New leads"
+          value={String(leadsInPeriod?.length ?? 0)}
+          sub={topSources[0] ? `top: ${topSources[0].name}` : undefined}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mb-5">
+        <section className="card">
+          <header className="px-4 py-3 border-b">
+            <h2 className="font-semibold">Top services</h2>
+            <p className="text-xs text-gray-500">Estimate line-item revenue in this period.</p>
+          </header>
+          {!topServices.length ? (
+            <p className="p-4 text-sm text-gray-500">No estimates in this period yet.</p>
+          ) : (
+            <ul className="px-4 py-3 space-y-2">
+              {topServices.map((s) => (
+                <li key={s.name}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium text-gray-800 truncate pr-2">{s.name}</span>
+                    <span className="tabular-nums">{formatCurrency(s.total)}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-500" style={{ width: `${(s.total / topServiceMax) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <header className="px-4 py-3 border-b">
+            <h2 className="font-semibold">Best lead sources</h2>
+            <p className="text-xs text-gray-500">Leads created in this period, by source.</p>
+          </header>
+          {!topSources.length ? (
+            <p className="p-4 text-sm text-gray-500">No leads in this period yet.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {topSources.map((s) => {
+                const conv = s.total > 0 ? Math.round((s.won / s.total) * 100) : 0;
+                return (
+                  <li key={s.name} className="px-4 py-2 flex items-center justify-between text-sm">
+                    <span className="truncate font-medium">{s.name}</span>
+                    <span className="text-xs text-gray-600">
+                      {s.total} lead{s.total === 1 ? "" : "s"} · {conv}% won
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
 
       <div className="card mb-5">
