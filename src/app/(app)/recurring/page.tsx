@@ -196,7 +196,7 @@ export default async function RecurringPage() {
       )}
 
       <p className="text-xs text-gray-500 mt-6">
-        Tip: the cron at <Link href="#" className="underline">/api/cron/recurring</Link> will materialise due jobs automatically once you wire your scheduler to it. Until then, use Spawn now to drop the next visit on the calendar.
+        Tip: the cron at <code className="bg-gray-100 px-1 rounded text-[11px]">/api/cron/recurring</code> will materialise due jobs automatically once you wire your scheduler to it. Until then, use Spawn now to drop the next visit on the calendar.
       </p>
     </div>
   );

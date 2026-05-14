@@ -227,12 +227,16 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
               {categoryList.map((c) => (
                 <li key={c.name}>
                   <div className="flex justify-between text-xs mb-1">
-                    <Link
-                      href={c.id ? chipHref(activePeriod).replace(/category=[^&]*/, "") + (c.id ? `&category=${c.id}` : "") : "#"}
-                      className="font-medium text-gray-800 hover:text-brand-700"
-                    >
-                      {c.name}
-                    </Link>
+                    {c.id ? (
+                      <Link
+                        href={chipHref(activePeriod).replace(/category=[^&]*/, "") + `&category=${c.id}`}
+                        className="font-medium text-gray-800 hover:text-brand-700"
+                      >
+                        {c.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-gray-800">{c.name}</span>
+                    )}
                     <span className="tabular-nums">{formatCurrency(c.total)} <span className="text-gray-400">· {c.count}</span></span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
