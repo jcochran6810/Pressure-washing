@@ -14,7 +14,7 @@ export type EmailResult = { ok: true; id: string } | { ok: false; reason: string
 
 export async function sendEmail(args: SendArgs): Promise<EmailResult> {
   const key = args.apiKey || process.env.RESEND_API_KEY;
-  const from = args.from || process.env.RESEND_FROM || "Suds <onboarding@resend.dev>";
+  const from = args.from || process.env.RESEND_FROM || "Home Services <onboarding@resend.dev>";
   if (!key) {
     return { ok: false, reason: "Email not configured for this account" };
   }

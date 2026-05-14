@@ -97,7 +97,7 @@ export function AppShell({
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
         <div className="px-4 py-5 flex items-center gap-2 font-bold text-lg border-b">
-          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">S</span>
+          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">{(orgName[0] || "?").toUpperCase()}</span>
           <span className="truncate flex-1">{orgName}</span>
           <NotificationsBell notifications={notifications} align="right" size="sm" />
         </div>
@@ -124,7 +124,7 @@ export function AppShell({
           </svg>
         </button>
         <div className="flex items-center gap-2 font-bold min-w-0">
-          <span className="inline-block w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm flex-shrink-0">S</span>
+          <span className="inline-block w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm flex-shrink-0">{(orgName[0] || "?").toUpperCase()}</span>
           <span className="truncate">{orgName}</span>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">

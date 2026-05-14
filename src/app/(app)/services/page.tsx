@@ -1,7 +1,8 @@
 import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader } from "@/components/page-header";
-import { createService, updateService, deleteService, updateGlobalPricingSettings } from "./actions";
+import { createService, updateService, deleteService, updateGlobalPricingSettings, loadTradeDefaults } from "./actions";
 import { formatCurrency } from "@/lib/utils";
+import { getDefaultsForTrade } from "@/lib/trade-defaults";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,36 @@ export default async function ServicesPage() {
     .order("is_addon", { ascending: true })
     .order("name");
 
+  const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
+  const tradeDefaults = getDefaultsForTrade(businessTypeId);
+  const existingNames = new Set((services ?? []).map((s: any) => (s.name ?? "").toLowerCase()));
+  const missingDefaults = tradeDefaults.filter((d) => !existingNames.has(d.name.toLowerCase()));
+
   return (
     <div>
       <PageHeader title="Services & Pricing" description="Configure how each service is priced — sqft, height, material modifiers, minimum job price." />
+
+      {missingDefaults.length > 0 && (
+        <section className="card-padded mb-5 border-brand-200 bg-brand-50">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-brand-800">
+                {missingDefaults.length} default service{missingDefaults.length === 1 ? "" : "s"} from your trade aren't in your catalog yet
+              </h2>
+              <p className="text-xs text-brand-700 mt-1">
+                Pre-priced templates pulled from the {businessTypeId.replace(/_/g, " ")} starter set. You can edit or delete each one after.
+              </p>
+              <p className="text-[11px] text-brand-700/70 mt-2">
+                {missingDefaults.slice(0, 6).map((d) => d.name).join(" · ")}
+                {missingDefaults.length > 6 ? ` +${missingDefaults.length - 6} more` : ""}
+              </p>
+            </div>
+            <form action={loadTradeDefaults}>
+              <button className="btn-primary text-sm whitespace-nowrap">Load trade defaults</button>
+            </form>
+          </div>
+        </section>
+      )}
 
       <section className="card-padded mb-5">
         <h2 className="font-semibold mb-3">Global pricing rules</h2>

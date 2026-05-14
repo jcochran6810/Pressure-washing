@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { formatDate } from "@/lib/utils";
+import { PLATFORM_NAME } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
           )}
         </section>
 
-        <p className="text-center text-xs text-gray-400 mt-10">Powered by Suds</p>
+        <p className="text-center text-xs text-gray-400 mt-10">Powered by {PLATFORM_NAME}</p>
       </div>
     </main>
   );

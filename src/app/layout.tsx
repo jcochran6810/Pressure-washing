@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PLATFORM_NAME, PLATFORM_SHORT_DESCRIPTION } from "@/lib/platform";
 
 export const metadata: Metadata = {
-  title: "Suds — Pressure Washing Business Manager",
-  description: "All-in-one CRM, estimating, scheduling, invoicing, accounting, and inventory for pressure washing companies.",
+  title: `${PLATFORM_NAME} — Home Services Contractor App`,
+  description: PLATFORM_SHORT_DESCRIPTION,
 };
 
 export const viewport: Viewport = {

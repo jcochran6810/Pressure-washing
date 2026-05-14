@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { approveQuote, declineQuote } from "./actions";
+import { PLATFORM_NAME } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +124,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
           </div>
         )}
 
-        <p className="text-center text-xs text-gray-400 mt-6">Powered by Suds</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Powered by {PLATFORM_NAME}</p>
       </div>
     </main>
   );

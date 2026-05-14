@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { exchangeCode, ensureFolder, userInfo } from "@/lib/google-drive";
 import { listCalendars } from "@/lib/google-calendar";
+import { DRIVE_ROOT_FOLDER_NAME } from "@/lib/platform";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     const me = await userInfo(tokens.access_token);
 
     // Create folder structure
-    const root = await ensureFolder(tokens.access_token, "Suds — Pressure Washing");
+    const root = await ensureFolder(tokens.access_token, DRIVE_ROOT_FOLDER_NAME);
     const [invoices, estimates, photos, receipts] = await Promise.all([
       ensureFolder(tokens.access_token, "Invoices", root),
       ensureFolder(tokens.access_token, "Estimates", root),

@@ -15,8 +15,8 @@ export async function seedDemoData() {
 
   // Brand the org as demo
   await supabase.from("organizations").update({
-    name: "Crystal Clear Pressure Washing (Demo)",
-    email: "demo@suds.local",
+    name: "Acme Home Services (Demo)",
+    email: "demo@example.com",
     phone: "(555) 555-0142",
     website: "https://example.com",
     address_line1: "123 Main Street",

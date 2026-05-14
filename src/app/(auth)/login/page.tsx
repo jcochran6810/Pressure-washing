@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { seedDemoData } from "../demo/actions";
+import { PLATFORM_NAME } from "@/lib/platform";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function LoginPage() {
     setDemoLoading(true);
     const supabase = createClient();
     const { error: authErr } = await supabase.auth.signInAnonymously({
-      options: { data: { full_name: "Demo User", company_name: "Crystal Clear Pressure Washing (Demo)" } },
+      options: { data: { full_name: "Demo User", company_name: "Acme Home Services (Demo)" } },
     });
     if (authErr) {
       setDemoLoading(false);
@@ -59,8 +60,8 @@ export default function LoginPage() {
     <main className="min-h-screen grid place-items-center px-4 bg-gray-50">
       <div className="w-full max-w-sm">
         <Link href="/" className="flex items-center gap-2 mb-6 font-bold text-xl">
-          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">S</span>
-          Suds
+          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">{PLATFORM_NAME[0]}</span>
+          {PLATFORM_NAME}
         </Link>
         <div className="card-padded">
           <h1 className="text-xl font-semibold mb-4">Log in</h1>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { PLATFORM_NAME } from "@/lib/platform";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -46,8 +47,8 @@ export default function SignupPage() {
     <main className="min-h-screen grid place-items-center px-4 bg-gray-50">
       <div className="w-full max-w-sm">
         <Link href="/" className="flex items-center gap-2 mb-6 font-bold text-xl">
-          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">S</span>
-          Suds
+          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">{PLATFORM_NAME[0]}</span>
+          {PLATFORM_NAME}
         </Link>
         <div className="card-padded">
           <h1 className="text-xl font-semibold mb-4">Create your account</h1>
@@ -58,7 +59,7 @@ export default function SignupPage() {
             </div>
             <div>
               <label>Company name</label>
-              <input required value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full" placeholder="e.g. Crystal Clear Pressure Washing" />
+              <input required value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full" placeholder="e.g. Acme Home Services" />
             </div>
             <div>
               <label>Email</label>

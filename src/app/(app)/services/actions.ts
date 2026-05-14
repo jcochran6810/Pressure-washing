@@ -2,6 +2,7 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
+import { getDefaultsForTrade } from "@/lib/trade-defaults";
 
 export async function createService(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
@@ -64,6 +65,38 @@ export async function updateService(id: string, formData: FormData) {
 export async function deleteService(id: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
   await supabase.from("services").delete().eq("id", id).eq("organization_id", organizationId);
+  revalidatePath("/services");
+}
+
+// Insert the trade default services for the org's current business type. Skips
+// names that already exist so re-running won't create duplicates.
+// Accepts (and ignores) FormData so the function can be wired to a `<form action>`.
+export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
+  const defaults = getDefaultsForTrade(businessTypeId);
+
+  const { data: existing } = await supabase
+    .from("services")
+    .select("name")
+    .eq("organization_id", organizationId);
+  const existingNames = new Set((existing ?? []).map((s) => (s.name ?? "").toLowerCase()));
+
+  const toInsert = defaults
+    .filter((d) => !existingNames.has(d.name.toLowerCase()))
+    .map((d) => ({
+      organization_id: organizationId,
+      name: d.name,
+      description: d.description ?? null,
+      category: d.category,
+      pricing_unit: d.pricing_unit,
+      default_price: d.default_price,
+      active: true,
+    } as any));
+
+  if (toInsert.length) {
+    await supabase.from("services").insert(toInsert);
+  }
   revalidatePath("/services");
 }
 
