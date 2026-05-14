@@ -175,8 +175,9 @@ export function AppShell({
 
       {/* Mobile bottom tabs */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200">
-        <div className="grid grid-cols-4">
-          <BottomTab href="/dashboard" label="Home" active={isActive("/dashboard")} icon={<HomeIcon />} />
+        <div className="grid grid-cols-5">
+          <BottomTab href="/dashboard" label="Today" active={isActive("/dashboard")} icon={<HomeIcon />} />
+          <BottomTab href="/customers" label="Customers" active={isActive("/customers")} icon={<UsersIcon />} />
           <BottomTab href="/jobs" label="Jobs" active={isActive("/jobs")} icon={<BriefcaseIcon />} />
           <BottomTabButton label="Add" onClick={() => setAddOpen(true)} icon={<PlusIcon />} />
           <BottomTab href="/calendar" label="Calendar" active={isActive("/calendar")} icon={<CalendarIcon />} />
@@ -281,6 +282,17 @@ function PlusIcon() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
