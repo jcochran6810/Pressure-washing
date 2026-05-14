@@ -2,11 +2,9 @@ import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader } from "@/components/page-header";
 import { createService, updateService, deleteService, updateGlobalPricingSettings, loadTradeDefaults } from "./actions";
 import { formatCurrency } from "@/lib/utils";
-import { getDefaultsForTrade } from "@/lib/trade-defaults";
+import { getDefaultsForTrade, getFormConfigForTrade, PRICING_UNITS, type ServiceFormConfig } from "@/lib/trade-defaults";
 
 export const dynamic = "force-dynamic";
-
-const MATERIALS = ["concrete", "brick", "stucco", "vinyl", "wood", "composite", "roof_shingle", "roof_tile", "pavers"];
 
 export default async function ServicesPage({
   searchParams,
@@ -24,6 +22,7 @@ export default async function ServicesPage({
 
   const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
   const tradeDefaults = getDefaultsForTrade(businessTypeId);
+  const formConfig = getFormConfigForTrade(businessTypeId);
   const existingNames = new Set((services ?? []).map((s: any) => (s.name ?? "").toLowerCase()));
   const missingDefaults = tradeDefaults.filter((d) => !existingNames.has(d.name.toLowerCase()));
 
@@ -32,7 +31,7 @@ export default async function ServicesPage({
 
   return (
     <div>
-      <PageHeader title="Services & Pricing" description="Configure how each service is priced — sqft, height, material modifiers, minimum job price." />
+      <PageHeader title="Services & Pricing" description="Configure your service catalog, pricing, duration, and minimum job rules. Fields shown adapt to your trade." />
 
       {saved === "trade_defaults" && (
         <div className="border rounded-md p-3 text-sm mb-4 bg-green-50 text-green-800 border-green-200">
@@ -95,7 +94,7 @@ export default async function ServicesPage({
       </section>
 
       <div className="grid grid-cols-1 gap-4">
-        <ServiceForm action={createService} title="Add service" />
+        <ServiceForm action={createService} title="Add service" formConfig={formConfig} />
         {services?.map((s: any) => (
           <ServiceForm
             key={s.id}
@@ -103,6 +102,7 @@ export default async function ServicesPage({
             title={s.name}
             service={s}
             onDelete={deleteService.bind(null, s.id)}
+            formConfig={formConfig}
           />
         ))}
       </div>
@@ -110,7 +110,7 @@ export default async function ServicesPage({
   );
 }
 
-function ServiceForm({ action, title, service, onDelete }: { action: any; title: string; service?: any; onDelete?: () => Promise<void> }) {
+function ServiceForm({ action, title, service, onDelete, formConfig }: { action: any; title: string; service?: any; onDelete?: () => Promise<void>; formConfig: ServiceFormConfig }) {
   const materialMods = service?.material_modifiers ?? {};
   return (
     <form action={action} className="card-padded">
@@ -144,25 +144,27 @@ function ServiceForm({ action, title, service, onDelete }: { action: any; title:
         <div>
           <label>Pricing unit</label>
           <select name="pricing_unit" defaultValue={service?.pricing_unit ?? "flat"} className="w-full">
-            <option value="flat">Flat rate</option>
-            <option value="sqft">Per sqft</option>
-            <option value="linear_ft">Per linear ft</option>
-            <option value="hour">Per hour</option>
-            <option value="each">Each</option>
+            {PRICING_UNITS.map((u) => (
+              <option key={u.value} value={u.value}>{u.label}</option>
+            ))}
           </select>
         </div>
         <div>
-          <label>Default price (flat) / hourly</label>
+          <label>Default price</label>
           <input name="default_price" type="number" step="0.01" min="0" defaultValue={service?.default_price ?? 0} className="w-full" />
         </div>
-        <div>
-          <label>Price per sqft</label>
-          <input name="price_per_sqft" type="number" step="0.0001" min="0" defaultValue={service?.price_per_sqft ?? 0} className="w-full" />
-        </div>
-        <div>
-          <label>Price per linear ft</label>
-          <input name="price_per_linear_ft" type="number" step="0.0001" min="0" defaultValue={service?.price_per_linear_ft ?? 0} className="w-full" />
-        </div>
+        {formConfig.showPricePerSqft && (
+          <div>
+            <label>Price per sqft</label>
+            <input name="price_per_sqft" type="number" step="0.0001" min="0" defaultValue={service?.price_per_sqft ?? 0} className="w-full" />
+          </div>
+        )}
+        {formConfig.showPricePerLinearFt && (
+          <div>
+            <label>Price per linear ft</label>
+            <input name="price_per_linear_ft" type="number" step="0.0001" min="0" defaultValue={service?.price_per_linear_ft ?? 0} className="w-full" />
+          </div>
+        )}
         <div>
           <label>Minimum charge for this service</label>
           <input name="min_price" type="number" step="0.01" min="0" defaultValue={service?.min_price ?? 0} className="w-full" />
@@ -171,31 +173,35 @@ function ServiceForm({ action, title, service, onDelete }: { action: any; title:
           <label>Default duration (min)</label>
           <input name="default_duration_minutes" type="number" min="0" defaultValue={service?.default_duration_minutes ?? 60} className="w-full" />
         </div>
-        <div>
-          <label>Height modifier per story (e.g. 0.15 = +15%)</label>
-          <input name="height_modifier_per_story" type="number" step="0.001" min="0" defaultValue={service?.height_modifier_per_story ?? 0.15} className="w-full" />
-        </div>
+        {formConfig.showHeightModifier && (
+          <div>
+            <label>Height modifier per story (e.g. 0.15 = +15%)</label>
+            <input name="height_modifier_per_story" type="number" step="0.001" min="0" defaultValue={service?.height_modifier_per_story ?? 0.15} className="w-full" />
+          </div>
+        )}
       </div>
 
-      <div className="mt-4">
-        <p className="text-sm font-semibold mb-2">Material difficulty modifiers</p>
-        <p className="text-xs text-gray-500 mb-2">1.0 = no change, 1.2 = +20%, 0.9 = −10%.</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {MATERIALS.map((m) => (
-            <div key={m}>
-              <label className="text-xs capitalize">{m.replace("_", " ")}</label>
-              <input
-                name={`material_mod_${m}`}
-                type="number"
-                step="0.05"
-                min="0"
-                defaultValue={Number(materialMods[m] ?? 1)}
-                className="w-full text-sm"
-              />
-            </div>
-          ))}
+      {formConfig.showMaterialModifiers && formConfig.materials.length > 0 && (
+        <div className="mt-4">
+          <p className="text-sm font-semibold mb-2">Material difficulty modifiers</p>
+          <p className="text-xs text-gray-500 mb-2">1.0 = no change, 1.2 = +20%, 0.9 = −10%.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {formConfig.materials.map((m) => (
+              <div key={m}>
+                <label className="text-xs capitalize">{m.replace("_", " ")}</label>
+                <input
+                  name={`material_mod_${m}`}
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  defaultValue={Number(materialMods[m] ?? 1)}
+                  className="w-full text-sm"
+                />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex justify-between items-center mt-4">
         <div className="text-xs text-gray-500">

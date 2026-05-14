@@ -412,6 +412,73 @@ export function getDefaultsForTrade(business_type_id: string): DefaultService[] 
   return DEFAULT_SERVICES_BY_TRADE[business_type_id] ?? GENERAL_HOME;
 }
 
+// Per-trade form config — which optional fields the service editor renders.
+// Trades that don't deal with materials (lawn care, plumbing) hide the
+// material modifier grid; trades that aren't multi-story hide the height
+// modifier; trades that don't bill by area hide sqft/linear_ft pricing.
+export type ServiceFormConfig = {
+  showMaterialModifiers: boolean;
+  showHeightModifier: boolean;
+  showPricePerSqft: boolean;
+  showPricePerLinearFt: boolean;
+  materials: string[];
+};
+
+const DEFAULT_FORM_CONFIG: ServiceFormConfig = {
+  showMaterialModifiers: false,
+  showHeightModifier: false,
+  showPricePerSqft: false,
+  showPricePerLinearFt: false,
+  materials: [],
+};
+
+const FORM_CONFIG_BY_TRADE: Record<string, Partial<ServiceFormConfig>> = {
+  pressure_washing: {
+    showMaterialModifiers: true,
+    showHeightModifier: true,
+    showPricePerSqft: true,
+    showPricePerLinearFt: true,
+    materials: ["concrete","brick","stucco","vinyl","wood","composite","roof_shingle","roof_tile","pavers"],
+  },
+  painting: {
+    showHeightModifier: true,
+    showPricePerSqft: true,
+    showPricePerLinearFt: true,
+  },
+  roofing: {
+    showHeightModifier: true,
+  },
+  gutter_cleaning: {
+    showHeightModifier: true,
+    showPricePerLinearFt: true,
+  },
+  window_cleaning: {
+    showHeightModifier: true,
+  },
+  holiday_lights: {
+    showHeightModifier: true,
+    showPricePerLinearFt: true,
+  },
+  landscaping: {
+    showPricePerSqft: true,
+  },
+  carpet_cleaning: {
+    showPricePerSqft: true,
+  },
+  house_cleaning: {
+    showPricePerSqft: true,
+  },
+  // Trades not listed (lawn_care, plumbing, electrical, hvac, pool_service,
+  // pest_control, junk_removal, mobile_detailing, appliance_repair,
+  // dryer_vent, handyman, general_home) get DEFAULT_FORM_CONFIG — no material
+  // modifiers, no height, no per-area pricing fields.
+};
+
+export function getFormConfigForTrade(business_type_id: string): ServiceFormConfig {
+  const overrides = FORM_CONFIG_BY_TRADE[business_type_id] ?? {};
+  return { ...DEFAULT_FORM_CONFIG, ...overrides };
+}
+
 // Recognised pricing units (used by the editor + validation later).
 export const PRICING_UNITS: { value: string; label: string }[] = [
   { value: "flat", label: "Flat rate" },
