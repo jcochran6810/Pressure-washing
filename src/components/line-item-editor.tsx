@@ -137,6 +137,7 @@ export function LineItemEditor({
                   onChange={(e) => update(i, { quantity: Number(e.target.value) })}
                   className="w-full"
                 />
+                <p className="text-[10px] text-gray-500 mt-0.5 text-center">Quantity</p>
               </div>
               <div className="col-span-4 sm:col-span-2">
                 <input
@@ -148,6 +149,7 @@ export function LineItemEditor({
                   onChange={(e) => update(i, { unit_price: Number(e.target.value) })}
                   className="w-full"
                 />
+                <p className="text-[10px] text-gray-500 mt-0.5 text-center">Amount</p>
               </div>
               <div className="col-span-3 sm:col-span-2 text-right pt-2 text-sm font-medium">
                 {formatCurrency((Number(it.quantity) || 0) * (Number(it.unit_price) || 0))}
