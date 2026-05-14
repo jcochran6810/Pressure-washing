@@ -422,9 +422,9 @@ export type Database = {
         Relationships: [];
       };
       org_messaging_credentials: {
-        Row: { organization_id: string; resend_api_key: string | null; resend_from: string | null; telnyx_api_key: string | null; telnyx_from_number: string | null; messaging_addon_enabled: boolean | null; created_at: string | null; updated_at: string | null };
-        Insert: { organization_id: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; created_at?: string | null; updated_at?: string | null };
-        Update: { organization_id?: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Row: { organization_id: string; resend_api_key: string | null; resend_from: string | null; telnyx_api_key: string | null; telnyx_from_number: string | null; messaging_addon_enabled: boolean | null; messaging_mode: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { organization_id: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; messaging_mode?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { organization_id?: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; messaging_mode?: string | null; created_at?: string | null; updated_at?: string | null };
         Relationships: [];
       };
       organizations: {

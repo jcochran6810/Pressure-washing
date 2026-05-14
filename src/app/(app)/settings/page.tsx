@@ -1,21 +1,40 @@
 import Link from "next/link";
 import { getSessionAndOrg } from "@/lib/org";
-import { updateOrganization, disconnectGoogleDrive, saveMessagingCredentials, clearMessagingCredentials } from "./actions";
+import {
+  updateOrganization,
+  disconnectGoogleDrive,
+  saveMessagingCredentials,
+  clearMessagingCredentials,
+  setMessagingMode,
+  setBusinessType,
+} from "./actions";
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
 import { CalendarPicker } from "@/components/calendar-picker";
 import { qboConfigured } from "@/lib/qbo";
+import { isEncryptionAvailable } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string; msg?: string; qbo?: string }> }) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { google, msg, qbo } = await searchParams;
-  const [{ data: drive }, { data: qboConn }, { data: messagingCreds }] = await Promise.all([
+  const [
+    { data: drive },
+    { data: qboConn },
+    { data: messagingCreds },
+    { data: businessTypes },
+  ] = await Promise.all([
     supabase.from("google_drive_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     (supabase as any).from("qbo_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     supabase.from("org_messaging_credentials").select("*").eq("organization_id", organizationId).maybeSingle(),
+    (supabase as any).from("business_types").select("*").eq("active", true).order("sort_order"),
   ]);
+  const messagingMode: "platform" | "byoc" =
+    (messagingCreds?.messaging_mode === "byoc" ? "byoc" : "platform");
+  const subscriptionTier = (organization as any)?.subscription_tier ?? "solo";
+  const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
+  const encryptionReady = isEncryptionAvailable();
 
   // If Google is connected with calendar scope, fetch the user's calendar list so
   // they can pick which one this app pulls events from.
@@ -48,6 +67,32 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {google === "no_refresh_token" && <Notice tone="error">Google didn't return a refresh token. Revoke access in your Google account and try again.</Notice>}
       {qbo === "connected" && <Notice tone="ok">QuickBooks Online connected.</Notice>}
       {qbo === "error" && <Notice tone="error">QuickBooks connect failed{msg ? `: ${msg}` : "."}</Notice>}
+
+      <section className="card-padded mb-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="font-semibold">Business type</h2>
+          <span className="badge bg-gray-100 text-gray-700 capitalize">
+            {(businessTypes ?? []).find((b: any) => b.id === businessTypeId)?.name ?? businessTypeId}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          The trade you operate in. Default service templates, checklists, custom fields, and message
+          templates use this. You can change it any time.
+        </p>
+        <form action={setBusinessType} className="flex flex-wrap gap-2 items-end">
+          <label className="text-xs flex-1 min-w-[240px]">
+            Business type
+            <select name="business_type_id" defaultValue={businessTypeId} className="w-full mt-0.5">
+              {(businessTypes ?? []).map((b: any) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="btn-secondary text-sm">Save</button>
+        </form>
+      </section>
 
       <section className="card-padded mb-5">
         <h2 className="font-semibold mb-3">Business info</h2>
@@ -157,13 +202,67 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       <section className="card-padded mb-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h2 className="font-semibold">Messaging add-on</h2>
-          <span className="badge bg-brand-100 text-brand-700">Bring your own keys</span>
+          <h2 className="font-semibold">Email & SMS</h2>
+          <span className="badge bg-brand-100 text-brand-700 capitalize">{subscriptionTier} plan</span>
         </div>
         <p className="text-xs text-gray-500 mb-3">
-          Connect your own Resend and Telnyx accounts so emails and SMS are sent directly through your accounts.
-          You only pay your providers — no platform send fees. Leave fields blank to keep messaging off for this business.
+          Pick where outbound email and SMS run from. The default uses the platform's shared providers
+          included with your subscription. Switch to <strong>Bring your own keys</strong> if you'd rather
+          run everything through your own Resend / Telnyx accounts.
         </p>
+
+        <form action={setMessagingMode} className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label
+            className={`border rounded-lg p-3 cursor-pointer ${
+              messagingMode === "platform"
+                ? "border-brand-500 bg-brand-50"
+                : "border-gray-200 hover:border-brand-300"
+            }`}
+          >
+            <input
+              type="radio"
+              name="messaging_mode"
+              value="platform"
+              defaultChecked={messagingMode === "platform"}
+              className="sr-only"
+            />
+            <span className="font-semibold text-sm block">Use the platform (recommended)</span>
+            <span className="block text-xs text-gray-600 mt-1">
+              Included with your subscription. Nothing to configure — emails and SMS just work.
+            </span>
+          </label>
+          <label
+            className={`border rounded-lg p-3 cursor-pointer ${
+              messagingMode === "byoc"
+                ? "border-brand-500 bg-brand-50"
+                : "border-gray-200 hover:border-brand-300"
+            }`}
+          >
+            <input
+              type="radio"
+              name="messaging_mode"
+              value="byoc"
+              defaultChecked={messagingMode === "byoc"}
+              className="sr-only"
+            />
+            <span className="font-semibold text-sm block">Bring your own keys</span>
+            <span className="block text-xs text-gray-600 mt-1">
+              Use your own Resend + Telnyx accounts. You pay the per-message cost; we never see your traffic.
+            </span>
+          </label>
+          <button type="submit" className="btn-secondary text-xs sm:col-span-2 self-start">
+            Save delivery mode
+          </button>
+        </form>
+
+        {messagingMode === "byoc" && !encryptionReady && (
+          <div className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
+            ⚠️ <code>MESSAGING_SECRET</code> isn't configured on this deployment. Your keys will be stored
+            in plaintext until the operator sets it. Ask support before saving production credentials.
+          </div>
+        )}
+
+        {messagingMode === "byoc" && (
         <form action={saveMessagingCredentials} className="space-y-4">
           <div className="border border-gray-200 rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -189,8 +288,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <input
                   type="password"
                   name="resend_api_key"
-                  defaultValue={messagingCreds?.resend_api_key ?? ""}
-                  placeholder={messagingCreds?.resend_api_key ? "•••••• (saved)" : "re_..."}
+                  defaultValue={messagingCreds?.resend_api_key ? "••••••" : ""}
+                  placeholder={messagingCreds?.resend_api_key ? "•••••• (saved — re-type to change)" : "re_..."}
                   className="w-full mt-0.5"
                 />
               </label>
@@ -231,8 +330,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <input
                   type="password"
                   name="telnyx_api_key"
-                  defaultValue={messagingCreds?.telnyx_api_key ?? ""}
-                  placeholder={messagingCreds?.telnyx_api_key ? "•••••• (saved)" : "KEY..."}
+                  defaultValue={messagingCreds?.telnyx_api_key ? "••••••" : ""}
+                  placeholder={messagingCreds?.telnyx_api_key ? "•••••• (saved — re-type to change)" : "KEY..."}
                   className="w-full mt-0.5"
                 />
               </label>
@@ -241,8 +340,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <input
                   type="tel"
                   name="telnyx_from_number"
-                  defaultValue={messagingCreds?.telnyx_from_number ?? ""}
-                  placeholder="+15551234567"
+                  defaultValue={messagingCreds?.telnyx_from_number ? "••••••" : ""}
+                  placeholder={messagingCreds?.telnyx_from_number ? "•••••• (saved — re-type to change)" : "+15551234567"}
                   className="w-full mt-0.5"
                 />
               </label>
@@ -256,6 +355,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             )}
           </div>
         </form>
+        )}
       </section>
 
       <section className="card-padded mb-5">

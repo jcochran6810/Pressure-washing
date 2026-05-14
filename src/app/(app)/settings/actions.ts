@@ -2,6 +2,7 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
+import { encryptString } from "@/lib/crypto";
 
 export async function updateOrganization(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
@@ -36,19 +37,51 @@ export async function disconnectGoogleDrive() {
 
 export async function saveMessagingCredentials(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
-  const resend_api_key = String(formData.get("resend_api_key") || "").trim() || null;
-  const resend_from = String(formData.get("resend_from") || "").trim() || null;
-  const telnyx_api_key = String(formData.get("telnyx_api_key") || "").trim() || null;
-  const telnyx_from_number = String(formData.get("telnyx_from_number") || "").trim() || null;
+  const PLACEHOLDER = "••••••";
+  const raw = (key: string) => String(formData.get(key) || "").trim();
 
+  // Treat the masked placeholder as "no change" so re-saving the form without
+  // re-typing the key doesn't wipe the stored value.
+  const newResendKey = raw("resend_api_key");
+  const newTelnyxKey = raw("telnyx_api_key");
+  const newTelnyxFrom = raw("telnyx_from_number");
+
+  const patch: Record<string, unknown> = {
+    organization_id: organizationId,
+    resend_from: raw("resend_from") || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (newResendKey && !newResendKey.startsWith(PLACEHOLDER)) {
+    patch.resend_api_key = encryptString(newResendKey);
+  } else if (!newResendKey) {
+    patch.resend_api_key = null;
+  }
+
+  if (newTelnyxKey && !newTelnyxKey.startsWith(PLACEHOLDER)) {
+    patch.telnyx_api_key = encryptString(newTelnyxKey);
+  } else if (!newTelnyxKey) {
+    patch.telnyx_api_key = null;
+  }
+
+  if (newTelnyxFrom) {
+    patch.telnyx_from_number = encryptString(newTelnyxFrom);
+  } else {
+    patch.telnyx_from_number = null;
+  }
+
+  await supabase.from("org_messaging_credentials").upsert(patch as any);
+  revalidatePath("/settings");
+}
+
+export async function setMessagingMode(formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const mode = String(formData.get("messaging_mode") || "platform") === "byoc" ? "byoc" : "platform";
   await supabase
     .from("org_messaging_credentials")
     .upsert({
       organization_id: organizationId,
-      resend_api_key,
-      resend_from,
-      telnyx_api_key,
-      telnyx_from_number,
+      messaging_mode: mode,
       updated_at: new Date().toISOString(),
     } as any);
   revalidatePath("/settings");
@@ -63,10 +96,23 @@ export async function clearMessagingCredentials() {
       resend_from: null,
       telnyx_api_key: null,
       telnyx_from_number: null,
+      messaging_mode: "platform",
       updated_at: new Date().toISOString(),
     } as any)
     .eq("organization_id", organizationId);
   revalidatePath("/settings");
+}
+
+export async function setBusinessType(formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const business_type_id = String(formData.get("business_type_id") || "").trim();
+  if (!business_type_id) return;
+  await supabase
+    .from("organizations")
+    .update({ business_type_id, updated_at: new Date().toISOString() } as any)
+    .eq("id", organizationId);
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
 }
 
 export async function setLinkedCalendar(formData: FormData) {
