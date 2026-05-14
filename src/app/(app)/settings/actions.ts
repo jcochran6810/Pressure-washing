@@ -103,6 +103,37 @@ export async function clearMessagingCredentials() {
   revalidatePath("/settings");
 }
 
+export async function disconnectStripeConnect() {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const acct = (organization as any)?.stripe_account_id;
+  if (acct) {
+    try {
+      const { getStripe } = await import("@/lib/stripe");
+      const stripe = getStripe();
+      if (stripe) {
+        await (stripe.oauth as any).deauthorize({
+          client_id: process.env.STRIPE_CONNECT_CLIENT_ID,
+          stripe_user_id: acct,
+        });
+      }
+    } catch (e) {
+      // Stripe may already consider us disconnected — proceed to clear local state.
+      console.error("Stripe deauthorize:", e);
+    }
+  }
+  await supabase
+    .from("organizations")
+    .update({
+      stripe_account_id: null,
+      stripe_connect_status: null,
+      stripe_connect_email: null,
+      stripe_connect_country: null,
+      stripe_connect_connected_at: null,
+    } as any)
+    .eq("id", organizationId);
+  revalidatePath("/settings");
+}
+
 export async function setBusinessType(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const business_type_id = String(formData.get("business_type_id") || "").trim();

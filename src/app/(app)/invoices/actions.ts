@@ -219,24 +219,49 @@ export async function createStripePaymentLink(invoiceId: string) {
     .single();
   if (!inv) throw new Error("Invoice not found");
 
+  const connectedAccount = (organization as any)?.stripe_account_id || null;
+  if (!connectedAccount) {
+    throw new Error(
+      "Connect your Stripe account in Settings → Stripe payments before creating a payment link. " +
+      "Payments will deposit directly into your Stripe account.",
+    );
+  }
+  const reqOpts = { stripeAccount: connectedAccount } as const;
   const currency = (organization?.currency || "USD").toLowerCase();
-  // Stripe payment links require pre-created prices. We pre-create on-the-fly prices via products,
-  // then use those price IDs in the payment link.
+
+  // Pre-create products and prices on the connected account so the payment
+  // link lives on their Stripe account and funds settle to them directly.
   const priceIds: { price: string; quantity: number }[] = [];
+  let invoiceCents = 0;
   for (const li of inv.invoice_line_items as any[]) {
-    const product = await stripe.products.create({ name: li.description });
-    const price = await stripe.prices.create({
-      product: product.id,
-      currency,
-      unit_amount: Math.round(Number(li.unit_price || 0) * 100),
-    });
-    priceIds.push({ price: price.id, quantity: Math.max(1, Math.round(Number(li.quantity || 1))) });
+    const unitAmount = Math.round(Number(li.unit_price || 0) * 100);
+    const qty = Math.max(1, Math.round(Number(li.quantity || 1)));
+    invoiceCents += unitAmount * qty;
+    const product = await stripe.products.create({ name: li.description }, reqOpts);
+    const price = await stripe.prices.create(
+      { product: product.id, currency, unit_amount: unitAmount },
+      reqOpts,
+    );
+    priceIds.push({ price: price.id, quantity: qty });
   }
 
-  const link = await stripe.paymentLinks.create({
-    line_items: priceIds,
-    metadata: { invoice_id: inv.id, organization_id: organizationId, invoice_number: inv.invoice_number },
-  });
+  const { platformFeeAmount } = await import("@/lib/stripe-connect");
+  const feeCents = platformFeeAmount(invoiceCents);
+
+  const link = await stripe.paymentLinks.create(
+    {
+      line_items: priceIds,
+      metadata: {
+        invoice_id: inv.id,
+        organization_id: organizationId,
+        invoice_number: inv.invoice_number,
+      },
+      ...(feeCents > 0
+        ? { application_fee_amount: feeCents }
+        : {}),
+    } as any,
+    reqOpts,
+  );
 
   await supabase.from("invoices").update({ stripe_payment_link: link.url }).eq("id", inv.id);
   revalidatePath(`/invoices/${inv.id}`);

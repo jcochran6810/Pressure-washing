@@ -7,6 +7,7 @@ import {
   clearMessagingCredentials,
   setMessagingMode,
   setBusinessType,
+  disconnectStripeConnect,
 } from "./actions";
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
@@ -15,12 +16,17 @@ import { qboConfigured } from "@/lib/qbo";
 import { isEncryptionAvailable } from "@/lib/crypto";
 import { getOrgUsage, TIERS, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
+import { isConnectConfigured } from "@/lib/stripe-connect";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string; msg?: string; qbo?: string }> }) {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ google?: string; msg?: string; qbo?: string; stripe?: string }>;
+}) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { google, msg, qbo } = await searchParams;
+  const { google, msg, qbo, stripe } = await searchParams;
   const [
     { data: drive },
     { data: qboConn },
@@ -39,6 +45,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const encryptionReady = isEncryptionAvailable();
   const stripeConnected = Boolean(getStripe());
   const stripeCustomerId = (organization as any)?.stripe_customer_id ?? null;
+  const stripeConnectReady = isConnectConfigured();
+  const stripeAccountId = (organization as any)?.stripe_account_id ?? null;
+  const stripeConnectEmail = (organization as any)?.stripe_connect_email ?? null;
   const usage = await getOrgUsage(organizationId);
 
   // If Google is connected with calendar scope, fetch the user's calendar list so
@@ -72,6 +81,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {google === "no_refresh_token" && <Notice tone="error">Google didn't return a refresh token. Revoke access in your Google account and try again.</Notice>}
       {qbo === "connected" && <Notice tone="ok">QuickBooks Online connected.</Notice>}
       {qbo === "error" && <Notice tone="error">QuickBooks connect failed{msg ? `: ${msg}` : "."}</Notice>}
+      {stripe === "connected" && <Notice tone="ok">Stripe payments connected. Payments deposit into your account.</Notice>}
+      {stripe === "denied" && <Notice tone="error">Stripe connection was declined.</Notice>}
+      {stripe === "error" && <Notice tone="error">Stripe connect failed{msg ? `: ${msg}` : "."}</Notice>}
+      {stripe === "unauthorized" && <Notice tone="error">Only org owners or admins can connect Stripe.</Notice>}
 
       <SubscriptionCard
         currentTier={subscriptionTier}
@@ -208,6 +221,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             connectHref="/api/accounting/qbo/connect"
             manageUrl="https://quickbooks.intuit.com"
             disconnectAction={disconnectQbo}
+          />
+
+          <ConnectAccountCard
+            title="Stripe payments"
+            description="Customers pay invoices online; funds deposit into your own Stripe account, not the platform's."
+            available={stripeConnectReady}
+            connected={Boolean(stripeAccountId)}
+            connectedTo={stripeConnectEmail ?? (stripeAccountId ? stripeAccountId.slice(0, 12) + "…" : null)}
+            connectHref="/api/stripe/connect"
+            manageUrl="https://dashboard.stripe.com"
+            disconnectAction={disconnectStripeConnect}
           />
         </div>
       </section>
@@ -382,10 +406,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             active={mapsConfigured}
           />
           <PlatformServiceRow
-            title="Online payments (Stripe)"
-            description="Adds a Pay Now link to invoices."
-            active={stripeConfigured}
-            note="Currently routes payments to the platform Stripe account. Per-business Stripe Connect coming soon."
+            title="Online payments (Stripe Connect)"
+            description="Pay Now links on invoices route funds straight to each business's connected Stripe account."
+            active={stripeConfigured && stripeConnectReady}
+            note={
+              stripeConnectReady
+                ? "Each business connects their own Stripe in the Connect your accounts panel above."
+                : "Set STRIPE_CONNECT_CLIENT_ID to enable per-business payments."
+            }
           />
           <PlatformServiceRow
             title="Email & SMS fallback"
