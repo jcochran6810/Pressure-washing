@@ -8,6 +8,7 @@ import {
   setMessagingMode,
   setBusinessType,
   disconnectStripeConnect,
+  pickTier,
 } from "./actions";
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
@@ -624,6 +625,9 @@ function savedLabel(key: string): string {
     case "calendar": return "Linked calendar updated.";
     case "google_disconnected": return "Google Drive disconnected.";
     case "stripe_disconnected": return "Stripe payments disconnected.";
+    case "tier_basic": return "Plan changed to Basic ($5/mo).";
+    case "tier_plus": return "Plan changed to Plus ($15/mo).";
+    case "tier_pro": return "Plan changed to Pro ($45/mo).";
     default: return "Changes saved.";
   }
 }
@@ -740,15 +744,13 @@ function SubscriptionCard({
               </ul>
               {isCurrent ? (
                 <p className="text-[11px] text-brand-700 font-medium">Current plan</p>
-              ) : stripeReady ? (
-                <a
-                  href={`/api/billing/checkout?tier=${id}`}
-                  className="btn-primary text-xs inline-block text-center"
-                >
-                  {ctaLabel}
-                </a>
               ) : (
-                <p className="text-[11px] text-gray-400">Billing not configured</p>
+                <form action={pickTier}>
+                  <input type="hidden" name="tier" value={id} />
+                  <button type="submit" className="btn-primary text-xs w-full">
+                    {ctaLabel}
+                  </button>
+                </form>
               )}
             </div>
           );

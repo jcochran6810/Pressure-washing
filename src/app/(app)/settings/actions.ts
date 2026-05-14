@@ -4,6 +4,8 @@ import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { encryptString } from "@/lib/crypto";
+import { TIERS, stripePriceIdFor, type Tier } from "@/lib/billing";
+import { getStripe } from "@/lib/stripe";
 
 // Redirect back to /settings with a ?saved=<key> flag so the page can render a
 // confirmation Notice. Keys map to user-facing copy on the settings page.
@@ -164,4 +166,27 @@ export async function setLinkedCalendar(formData: FormData) {
     .eq("organization_id", organizationId);
   revalidatePath("/calendar");
   savedRedirect("calendar");
+}
+
+// Pick a subscription tier from the Settings page. When Stripe is fully
+// configured (secret key + price ID for the chosen tier) this hands off to
+// Stripe Checkout — that's the real billing path. When it isn't (local dev,
+// self-hosted, env vars not yet set) we just write the tier directly to the
+// org so the user can still pick a plan and see the confirmation.
+export async function pickTier(formData: FormData) {
+  const tier = String(formData.get("tier") || "").trim() as Tier;
+  if (!(tier in TIERS)) return;
+
+  const stripe = getStripe();
+  const priceId = stripePriceIdFor(tier);
+  if (stripe && priceId) {
+    redirect(`/api/billing/checkout?tier=${tier}`);
+  }
+
+  const { supabase, organizationId } = await getSessionAndOrg();
+  await supabase
+    .from("organizations")
+    .update({ subscription_tier: tier, updated_at: new Date().toISOString() } as any)
+    .eq("id", organizationId);
+  savedRedirect(`tier_${tier}`);
 }
