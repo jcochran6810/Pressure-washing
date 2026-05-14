@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 
 const MATERIALS = ["concrete", "brick", "stucco", "vinyl", "wood", "composite", "roof_shingle", "roof_tile", "pavers"];
 
-export default async function ServicesPage() {
+export default async function ServicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ saved?: string; error?: string; services?: string; fields?: string }>;
+}) {
+  const { saved, error, services: addedServices, fields: addedFields } = await searchParams;
   const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { data: services } = await supabase
     .from("services")
@@ -22,9 +27,26 @@ export default async function ServicesPage() {
   const existingNames = new Set((services ?? []).map((s: any) => (s.name ?? "").toLowerCase()));
   const missingDefaults = tradeDefaults.filter((d) => !existingNames.has(d.name.toLowerCase()));
 
+  const savedSvcCount = Number(addedServices ?? 0);
+  const savedFieldCount = Number(addedFields ?? 0);
+
   return (
     <div>
       <PageHeader title="Services & Pricing" description="Configure how each service is priced — sqft, height, material modifiers, minimum job price." />
+
+      {saved === "trade_defaults" && (
+        <div className="border rounded-md p-3 text-sm mb-4 bg-green-50 text-green-800 border-green-200">
+          Loaded {savedSvcCount} service{savedSvcCount === 1 ? "" : "s"}
+          {savedFieldCount > 0 ? ` and ${savedFieldCount} custom field${savedFieldCount === 1 ? "" : "s"}` : ""} from the
+          {" "}{businessTypeId.replace(/_/g, " ")} starter set.
+          {savedSvcCount === 0 && savedFieldCount === 0 && " Everything was already in place — nothing new to add."}
+        </div>
+      )}
+      {error && (
+        <div className="border rounded-md p-3 text-sm mb-4 bg-red-50 text-red-800 border-red-200">
+          {error}
+        </div>
+      )}
 
       {missingDefaults.length > 0 && (
         <section className="card-padded mb-5 border-brand-200 bg-brand-50">

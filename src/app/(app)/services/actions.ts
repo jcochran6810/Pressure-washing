@@ -2,6 +2,7 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getDefaultsForTrade, getCustomFieldDefaultsForTrade } from "@/lib/trade-defaults";
 
 export async function createService(formData: FormData) {
@@ -69,8 +70,10 @@ export async function deleteService(id: string) {
 }
 
 // Insert the trade default services for the org's current business type. Skips
-// names that already exist so re-running won't create duplicates.
-// Accepts (and ignores) FormData so the function can be wired to a `<form action>`.
+// names that already exist so re-running won't create duplicates. Captures the
+// Supabase errors and forwards them through to the redirect so a CHECK
+// constraint failure (or similar) shows up as a visible banner rather than
+// looking like the button did nothing.
 export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
   const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
@@ -94,11 +97,17 @@ export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
       active: true,
     } as any));
 
+  let servicesAdded = 0;
   if (toInsert.length) {
-    await supabase.from("services").insert(toInsert);
+    const { error } = await supabase.from("services").insert(toInsert);
+    if (error) {
+      revalidatePath("/services");
+      redirect(`/services?error=${encodeURIComponent(`Couldn't load services: ${error.message}`)}`);
+    }
+    servicesAdded = toInsert.length;
   }
 
-  // Also seed any missing trade-default custom fields (best-effort).
+  let fieldsAdded = 0;
   const cfDefaults = getCustomFieldDefaultsForTrade(businessTypeId);
   if (cfDefaults.length) {
     const { data: existingCfs } = await (supabase as any)
@@ -122,11 +131,13 @@ export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
         sort_order: idx * 10,
       }));
     if (cfInsert.length) {
-      await (supabase as any).from("custom_fields").insert(cfInsert);
+      const { error } = await (supabase as any).from("custom_fields").insert(cfInsert);
+      if (!error) fieldsAdded = cfInsert.length;
     }
   }
 
   revalidatePath("/services");
+  redirect(`/services?saved=trade_defaults&services=${servicesAdded}&fields=${fieldsAdded}`);
 }
 
 export async function updateGlobalPricingSettings(formData: FormData) {
