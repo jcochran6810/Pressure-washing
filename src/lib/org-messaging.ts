@@ -11,6 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail, type EmailResult } from "@/lib/email";
 import { decryptString } from "@/lib/crypto";
+import { canSend } from "@/lib/billing";
 
 export type MessagingMode = "platform" | "byoc";
 
@@ -66,9 +67,36 @@ export async function sendOrgEmail(
   args: { to: string; subject: string; html: string; replyTo?: string },
 ): Promise<EmailResult> {
   const creds = await loadOrgMessagingCreds(organization_id);
-  return sendEmail({
+
+  // Platform-tier sends are quota-enforced. BYOC bypasses (the org pays).
+  if (creds.mode !== "byoc") {
+    const gate = await canSend(organization_id, "email");
+    if (!gate.ok) return { ok: false, reason: gate.reason ?? "Email quota exceeded" };
+  }
+
+  const result = await sendEmail({
     ...args,
     apiKey: creds.resendApiKey ?? undefined,
     from: creds.resendFrom ?? undefined,
   });
+
+  // Best-effort log so we can meter usage. Skip on BYOC since the org is paying.
+  if (creds.mode !== "byoc") {
+    try {
+      const supabase = await createClient();
+      await (supabase as any).from("email_log").insert({
+        organization_id,
+        to_email: args.to,
+        subject: args.subject,
+        provider: "resend",
+        provider_id: result.ok ? result.id : null,
+        status: result.ok ? "sent" : "failed",
+        error: result.ok ? null : result.reason,
+      });
+    } catch {
+      /* logging best-effort */
+    }
+  }
+
+  return result;
 }

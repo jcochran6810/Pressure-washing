@@ -5,6 +5,7 @@
 import { sendEmail } from "@/lib/email";
 import { sendSms, normalizePhone } from "@/lib/sms";
 import { loadOrgMessagingCreds } from "@/lib/org-messaging";
+import { canSend } from "@/lib/billing";
 import {
   DEFAULT_TEMPLATES,
   pickTemplate,
@@ -56,6 +57,10 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
 
   if (args.channel === "email") {
     if (!args.to.email) return { ok: false, reason: "Customer has no email" };
+    if (creds.mode !== "byoc") {
+      const gate = await canSend(args.organizationId, "email");
+      if (!gate.ok) return { ok: false, reason: gate.reason ?? "Email quota exceeded" };
+    }
     const result = await sendEmail({
       to: args.to.email,
       subject: subject || "Message",
@@ -64,6 +69,22 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
       apiKey: creds.resendApiKey ?? undefined,
       from: creds.resendFrom ?? undefined,
     });
+    if (creds.mode !== "byoc") {
+      try {
+        await args.supabase.from("email_log").insert({
+          organization_id: args.organizationId,
+          customer_id: args.customerId ?? null,
+          to_email: args.to.email,
+          subject,
+          provider: "resend",
+          provider_id: result.ok ? result.id : null,
+          status: result.ok ? "sent" : "failed",
+          error: result.ok ? null : result.reason,
+          related_kind: args.relatedKind ?? null,
+          related_id: args.relatedId ?? null,
+        });
+      } catch { /* best-effort */ }
+    }
     return result.ok
       ? { ok: true, channel: "email", id: result.id, renderedSubject: subject, renderedBody: body }
       : { ok: false, reason: result.reason };
@@ -72,6 +93,10 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
   // SMS path
   const to = normalizePhone(args.to.phone);
   if (!to) return { ok: false, reason: "Customer has no valid phone number" };
+  if (creds.mode !== "byoc") {
+    const gate = await canSend(args.organizationId, "sms");
+    if (!gate.ok) return { ok: false, reason: gate.reason ?? "SMS quota exceeded" };
+  }
   const fromNumber = args.fromNumber ?? creds.telnyxFromNumber ?? undefined;
   const smsResult = await sendSms({
     to,

@@ -13,6 +13,8 @@ import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/li
 import { CalendarPicker } from "@/components/calendar-picker";
 import { qboConfigured } from "@/lib/qbo";
 import { isEncryptionAvailable } from "@/lib/crypto";
+import { getOrgUsage, TIERS, type Tier } from "@/lib/billing";
+import { getStripe } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const subscriptionTier = (organization as any)?.subscription_tier ?? "solo";
   const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
   const encryptionReady = isEncryptionAvailable();
+  const stripeConnected = Boolean(getStripe());
+  const stripeCustomerId = (organization as any)?.stripe_customer_id ?? null;
+  const usage = await getOrgUsage(organizationId);
 
   // If Google is connected with calendar scope, fetch the user's calendar list so
   // they can pick which one this app pulls events from.
@@ -67,6 +72,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {google === "no_refresh_token" && <Notice tone="error">Google didn't return a refresh token. Revoke access in your Google account and try again.</Notice>}
       {qbo === "connected" && <Notice tone="ok">QuickBooks Online connected.</Notice>}
       {qbo === "error" && <Notice tone="error">QuickBooks connect failed{msg ? `: ${msg}` : "."}</Notice>}
+
+      <SubscriptionCard
+        currentTier={subscriptionTier}
+        usage={usage}
+        stripeReady={stripeConnected}
+        stripeCustomerId={stripeCustomerId}
+      />
 
       <section className="card-padded mb-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -563,4 +575,111 @@ function ClearMessagingButton({ action }: { action: () => Promise<void> }) {
 function Notice({ tone, children }: { tone: "ok" | "error"; children: React.ReactNode }) {
   const cls = tone === "ok" ? "bg-green-50 text-green-800 border-green-200" : "bg-red-50 text-red-800 border-red-200";
   return <div className={`border rounded-md p-3 text-sm mb-4 ${cls}`}>{children}</div>;
+}
+
+function SubscriptionCard({
+  currentTier,
+  usage,
+  stripeReady,
+  stripeCustomerId,
+}: {
+  currentTier: Tier;
+  usage: Awaited<ReturnType<typeof getOrgUsage>>;
+  stripeReady: boolean;
+  stripeCustomerId: string | null;
+}) {
+  const cur = TIERS[currentTier] ?? TIERS.solo;
+  const tiersOrder: Tier[] = ["free", "solo", "pro"];
+  return (
+    <section className="card-padded mb-5">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h2 className="font-semibold">Subscription</h2>
+        <span className="badge bg-brand-100 text-brand-700">{cur.label} · ${cur.monthlyPrice}/mo</span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">{cur.description}</p>
+
+      {!usage.byoc && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <UsageBar label="Email this month" used={usage.emailUsed} limit={usage.emailLimit} />
+          <UsageBar label="SMS this month" used={usage.smsUsed} limit={usage.smsLimit} />
+        </div>
+      )}
+      {usage.byoc && (
+        <div className="mb-4 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-2">
+          You're routing email and SMS through your own provider keys, so platform quotas don't apply.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {tiersOrder.map((id) => {
+          const t = TIERS[id];
+          const isCurrent = id === currentTier;
+          const upgradeable = !isCurrent && id !== "free" && stripeReady;
+          return (
+            <div
+              key={id}
+              className={`border rounded-lg p-3 ${
+                isCurrent ? "border-brand-300 bg-brand-50" : "border-gray-200"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">{t.label}</h3>
+                <span className="text-xs text-gray-500">${t.monthlyPrice}/mo</span>
+              </div>
+              <p className="text-xs text-gray-600">{t.description}</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {t.emailPerMonth.toLocaleString()} email · {t.smsPerMonth.toLocaleString()} SMS / month
+              </p>
+              {isCurrent ? (
+                <p className="text-[11px] text-brand-700 font-medium mt-2">Current plan</p>
+              ) : upgradeable ? (
+                <a
+                  href={`/api/billing/checkout?tier=${id}`}
+                  className="btn-primary text-xs mt-2 inline-block"
+                >
+                  {currentTier === "free" || (currentTier === "solo" && id === "pro")
+                    ? `Upgrade to ${t.label}`
+                    : `Switch to ${t.label}`}
+                </a>
+              ) : !stripeReady ? (
+                <p className="text-[11px] text-gray-400 mt-2">Billing not configured</p>
+              ) : (
+                <p className="text-[11px] text-gray-400 mt-2">Free tier — cancel from portal</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {stripeCustomerId && (
+        <div className="mt-3 flex justify-end">
+          <a href="/api/billing/portal" className="btn-secondary text-xs">Manage billing →</a>
+        </div>
+      )}
+      {!stripeReady && (
+        <p className="text-[11px] text-gray-500 mt-3">
+          Operator: set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_BILLING_WEBHOOK_SECRET</code>, and price-id env
+          vars (<code>STRIPE_PRICE_ID_SOLO</code>, <code>STRIPE_PRICE_ID_PRO</code>) to enable in-app upgrades.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const tone = pct >= 95 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-brand-500";
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-gray-700">{label}</span>
+        <span className="tabular-nums text-gray-500">
+          {used.toLocaleString()}{limit > 0 ? ` / ${limit.toLocaleString()}` : " (none included)"}
+        </span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full ${tone}`} style={{ width: `${limit > 0 ? pct : 0}%` }} />
+      </div>
+    </div>
+  );
 }
