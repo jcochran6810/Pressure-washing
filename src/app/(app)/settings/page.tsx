@@ -18,6 +18,7 @@ import { isEncryptionAvailable } from "@/lib/crypto";
 import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, PRO_ADDON_EMAIL_PER_PACK, PRO_ADDON_SMS_PER_PACK, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { isConnectConfigured } from "@/lib/stripe-connect";
+import { OAuthPopupConnect } from "@/components/oauth-popup-connect";
 
 export const dynamic = "force-dynamic";
 
@@ -193,6 +194,7 @@ export default async function SettingsPage({
             connectHref="/api/google/connect"
             manageUrl="https://drive.google.com"
             disconnectAction={disconnectGoogleDrive}
+            popupProvider="google"
             setupHint={
               <div>
                 <p className="font-medium text-gray-700">To enable, set these env vars on your deployment:</p>
@@ -502,6 +504,7 @@ function ConnectAccountCard({
   manageUrl,
   disconnectAction,
   setupHint,
+  popupProvider,
 }: {
   title: string;
   description: string;
@@ -512,6 +515,7 @@ function ConnectAccountCard({
   manageUrl?: string;
   disconnectAction?: () => Promise<void>;
   setupHint?: React.ReactNode;
+  popupProvider?: "google" | "qbo" | "stripe";
 }) {
   // Three states from the user's POV:
   // 1. Connected → tapping opens the service's management dashboard.
@@ -576,12 +580,22 @@ function ConnectAccountCard({
           {inner}
         </a>
       ) : state === "ready" ? (
-        <Link
-          href={connectHref}
-          className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none"
-        >
-          {inner}
-        </Link>
+        popupProvider ? (
+          <OAuthPopupConnect
+            connectHref={connectHref}
+            provider={popupProvider}
+            className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none cursor-pointer"
+          >
+            {inner}
+          </OAuthPopupConnect>
+        ) : (
+          <Link
+            href={connectHref}
+            className="block px-4 py-3 hover:bg-brand-50/40 focus-visible:bg-brand-50/40 outline-none"
+          >
+            {inner}
+          </Link>
+        )
       ) : (
         <div className="block px-4 py-3 cursor-default">{inner}</div>
       )}

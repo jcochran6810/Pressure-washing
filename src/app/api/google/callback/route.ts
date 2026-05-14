@@ -4,30 +4,68 @@ import { exchangeCode, ensureFolder, userInfo } from "@/lib/google-drive";
 import { listCalendars } from "@/lib/google-calendar";
 import { DRIVE_ROOT_FOLDER_NAME } from "@/lib/platform";
 
+// Returns a tiny HTML page that posts the OAuth result back to the opener
+// window and closes itself. Falls back to a full-page redirect when there's
+// no opener (popup was blocked → user got the redirect flow instead).
+function popupResponse(status: string, msg?: string | null): Response {
+  const fallbackUrl = `/settings?google=${encodeURIComponent(status)}${msg ? `&msg=${encodeURIComponent(msg)}` : ""}`;
+  const payload = JSON.stringify({
+    source: "pw-oauth-google",
+    status,
+    msg: msg ?? null,
+  });
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Returning…</title></head>
+<body style="font-family:system-ui;padding:24px;color:#374151">
+<p>Returning to app…</p>
+<script>
+(function(){
+  var msg = ${payload};
+  var fallback = ${JSON.stringify(fallbackUrl)};
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(msg, window.location.origin);
+      window.close();
+      return;
+    }
+  } catch (e) {}
+  window.location.replace(fallback);
+})();
+</script>
+</body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  if (!code || !state) return NextResponse.redirect(new URL("/settings?google=error", request.url));
+  if (!code || !state) return popupResponse("error", "missing code or state");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(new URL("/login", request.url));
 
-  // Verify state — must match user's org
-  const { data: member } = await supabase.from("organization_members").select("organization_id").eq("organization_id", state).eq("user_id", user.id).maybeSingle();
-  if (!member) return NextResponse.redirect(new URL("/settings?google=unauthorized", request.url));
+  const { data: member } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("organization_id", state)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!member) return popupResponse("unauthorized");
   const organization_id = state;
 
   try {
     const tokens = await exchangeCode(code);
     if (!tokens.refresh_token) {
-      return NextResponse.redirect(new URL("/settings?google=no_refresh_token", request.url));
+      return popupResponse("no_refresh_token");
     }
 
     const me = await userInfo(tokens.access_token);
 
-    // Create folder structure
     const root = await ensureFolder(tokens.access_token, DRIVE_ROOT_FOLDER_NAME);
     const [invoices, estimates, photos, receipts] = await Promise.all([
       ensureFolder(tokens.access_token, "Invoices", root),
@@ -36,8 +74,6 @@ export async function GET(request: Request) {
       ensureFolder(tokens.access_token, "Receipts", root),
     ]);
 
-    // Default-pick the user's primary calendar so /calendar works immediately.
-    // They can pick a different one in settings.
     let calendarId: string | null = null;
     let calendarName: string | null = null;
     try {
@@ -48,7 +84,6 @@ export async function GET(request: Request) {
         calendarName = primary.summary;
       }
     } catch (e) {
-      // Calendar scope might have been declined — proceed without it.
       console.error("Calendar list failed:", e);
     }
 
@@ -69,7 +104,7 @@ export async function GET(request: Request) {
       updated_at: new Date().toISOString(),
     });
   } catch (err: any) {
-    return NextResponse.redirect(new URL(`/settings?google=error&msg=${encodeURIComponent(err.message)}`, request.url));
+    return popupResponse("error", err.message);
   }
-  return NextResponse.redirect(new URL("/settings?google=connected", request.url));
+  return popupResponse("connected");
 }
