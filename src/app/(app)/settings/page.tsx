@@ -193,6 +193,24 @@ export default async function SettingsPage({
             connectHref="/api/google/connect"
             manageUrl="https://drive.google.com"
             disconnectAction={disconnectGoogleDrive}
+            setupHint={
+              <div>
+                <p className="font-medium text-gray-700">To enable, set these env vars on your deployment:</p>
+                <ul className="list-disc list-inside mt-1 space-y-0.5">
+                  <li><code>GOOGLE_CLIENT_ID</code></li>
+                  <li><code>GOOGLE_CLIENT_SECRET</code></li>
+                  <li><code>NEXT_PUBLIC_APP_URL</code> (e.g. <code>https://yourdomain.com</code>)</li>
+                </ul>
+                <p className="mt-2">
+                  Create the OAuth client at{" "}
+                  <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Google Cloud Console → APIs & Services → Credentials</a>.
+                  Enable the <strong>Drive API</strong> and <strong>Calendar API</strong>, then authorize this redirect URI:
+                </p>
+                <p className="mt-1 font-mono text-[10px] bg-white border border-gray-200 rounded px-1.5 py-1 break-all">
+                  {(process.env.NEXT_PUBLIC_APP_URL || "https://your-domain.com") + "/api/google/callback"}
+                </p>
+              </div>
+            }
           />
 
           {drive && (
@@ -229,6 +247,24 @@ export default async function SettingsPage({
             connectHref="/api/accounting/qbo/connect"
             manageUrl="https://quickbooks.intuit.com"
             disconnectAction={disconnectQbo}
+            setupHint={
+              <div>
+                <p className="font-medium text-gray-700">To enable, set these env vars on your deployment:</p>
+                <ul className="list-disc list-inside mt-1 space-y-0.5">
+                  <li><code>QBO_CLIENT_ID</code></li>
+                  <li><code>QBO_CLIENT_SECRET</code></li>
+                  <li><code>QBO_ENVIRONMENT</code> (<code>sandbox</code> or <code>production</code>)</li>
+                </ul>
+                <p className="mt-2">
+                  Create the app at{" "}
+                  <a href="https://developer.intuit.com/app/developer/dashboard" target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Intuit Developer Dashboard</a>{" "}
+                  and add this redirect URI:
+                </p>
+                <p className="mt-1 font-mono text-[10px] bg-white border border-gray-200 rounded px-1.5 py-1 break-all">
+                  {(process.env.NEXT_PUBLIC_APP_URL || "https://your-domain.com") + "/api/accounting/qbo/callback"}
+                </p>
+              </div>
+            }
           />
 
           <ConnectAccountCard
@@ -240,6 +276,19 @@ export default async function SettingsPage({
             connectHref="/api/stripe/connect"
             manageUrl="https://dashboard.stripe.com"
             disconnectAction={disconnectStripeConnect}
+            setupHint={
+              <div>
+                <p className="font-medium text-gray-700">To enable Stripe Connect (per-business payments), set:</p>
+                <ul className="list-disc list-inside mt-1 space-y-0.5">
+                  <li><code>STRIPE_SECRET_KEY</code></li>
+                  <li><code>STRIPE_CONNECT_CLIENT_ID</code></li>
+                </ul>
+                <p className="mt-2">
+                  Get the Connect client ID at{" "}
+                  <a href="https://dashboard.stripe.com/settings/connect" target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Stripe Dashboard → Connect settings</a>.
+                </p>
+              </div>
+            }
           />
         </div>
       </section>
@@ -452,6 +501,7 @@ function ConnectAccountCard({
   connectHref,
   manageUrl,
   disconnectAction,
+  setupHint,
 }: {
   title: string;
   description: string;
@@ -461,11 +511,12 @@ function ConnectAccountCard({
   connectHref: string;
   manageUrl?: string;
   disconnectAction?: () => Promise<void>;
+  setupHint?: React.ReactNode;
 }) {
   // Three states from the user's POV:
   // 1. Connected → tapping opens the service's management dashboard.
   // 2. Available, not connected → tapping starts the in-app OAuth flow.
-  // 3. Not available on this deployment → read-only; ask support.
+  // 3. Not available on this deployment → show setup hint so the operator can wire it up.
   const state: "connected" | "ready" | "unavailable" = connected
     ? "connected"
     : available
@@ -480,7 +531,7 @@ function ConnectAccountCard({
     ) : state === "ready" ? (
       <span className="badge bg-yellow-100 text-yellow-700 whitespace-nowrap">Ready to connect</span>
     ) : (
-      <span className="badge bg-gray-100 text-gray-700 whitespace-nowrap">Currently unavailable</span>
+      <span className="badge bg-gray-100 text-gray-700 whitespace-nowrap">Setup required</span>
     );
 
   const inner = (
@@ -491,7 +542,12 @@ function ConnectAccountCard({
           {stateBadge}
         </div>
         <p className="text-xs text-gray-600 mt-1">{description}</p>
-        {state === "unavailable" && (
+        {state === "unavailable" && setupHint && (
+          <div className="text-[11px] text-gray-600 mt-2 bg-gray-50 border border-gray-200 rounded p-2">
+            {setupHint}
+          </div>
+        )}
+        {state === "unavailable" && !setupHint && (
           <p className="text-[11px] text-gray-500 mt-1">Contact support if you need this enabled for your account.</p>
         )}
       </div>
