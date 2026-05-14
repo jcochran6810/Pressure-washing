@@ -433,6 +433,18 @@ export type Database = {
         Update: { id?: string; organization_id?: string; field_id?: string; entity_type?: string; entity_id?: string; value_text?: string | null; value_number?: number | null; value_boolean?: boolean | null; value_date?: string | null; value_json?: any | null; created_at?: string | null; updated_at?: string | null };
         Relationships: [];
       };
+      recurring_jobs: {
+        Row: { id: string; organization_id: string; customer_id: string; property_id: string | null; service_id: string | null; title: string; description: string | null; recurrence_kind: string; recurrence_interval: number | null; next_service_date: string; last_service_date: string | null; default_price: number | null; duration_minutes: number | null; active: boolean | null; notes: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id: string; property_id?: string | null; service_id?: string | null; title: string; description?: string | null; recurrence_kind?: string; recurrence_interval?: number | null; next_service_date: string; last_service_date?: string | null; default_price?: number | null; duration_minutes?: number | null; active?: boolean | null; notes?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string; property_id?: string | null; service_id?: string | null; title?: string; description?: string | null; recurrence_kind?: string; recurrence_interval?: number | null; next_service_date?: string; last_service_date?: string | null; default_price?: number | null; duration_minutes?: number | null; active?: boolean | null; notes?: string | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      follow_ups: {
+        Row: { id: string; organization_id: string; customer_id: string | null; lead_id: string | null; estimate_id: string | null; job_id: string | null; invoice_id: string | null; kind: string; due_date: string; notes: string | null; completed: boolean | null; completed_at: string | null; created_by: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id?: string | null; lead_id?: string | null; estimate_id?: string | null; job_id?: string | null; invoice_id?: string | null; kind?: string; due_date?: string; notes?: string | null; completed?: boolean | null; completed_at?: string | null; created_by?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string | null; lead_id?: string | null; estimate_id?: string | null; job_id?: string | null; invoice_id?: string | null; kind?: string; due_date?: string; notes?: string | null; completed?: boolean | null; completed_at?: string | null; created_by?: string | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
       business_types: {
         Row: { id: string; name: string; description: string | null; icon: string | null; sort_order: number | null; active: boolean | null; created_at: string | null };
         Insert: { id: string; name: string; description?: string | null; icon?: string | null; sort_order?: number | null; active?: boolean | null; created_at?: string | null };

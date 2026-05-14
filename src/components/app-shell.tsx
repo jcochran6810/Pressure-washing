@@ -16,6 +16,8 @@ const NAV: NavItem[] = [
   { href: "/measure", label: "Measure", icon: "▭" },
   { href: "/estimates", label: "Estimates", icon: "✎" },
   { href: "/jobs", label: "Jobs", icon: "⚒" },
+  { href: "/recurring", label: "Recurring jobs", icon: "↻" },
+  { href: "/follow-ups", label: "Follow-ups", icon: "✓" },
   { href: "/calendar", label: "Calendar", icon: "▤" },
   { href: "/invoices", label: "Invoices", icon: "$" },
   { href: "/payments", label: "Receipts", icon: "✓" },

@@ -19,6 +19,7 @@ export default async function DashboardPage() {
     { count: overdueCount },
     { count: draftCount },
     { count: newLeadCount },
+    { count: openFollowUpsCount },
     { data: openInvoices },
     { data: upcomingJobs },
     { data: todayJobs },
@@ -32,6 +33,7 @@ export default async function DashboardPage() {
     supabase.from("invoices").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "overdue"),
     supabase.from("estimates").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "draft"),
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "new"),
+    (supabase as any).from("follow_ups").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("completed", false),
     supabase.from("invoices").select("id, invoice_number, total, balance_due, status, due_date, customers(first_name, last_name, company_name)").eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]).order("due_date", { ascending: true }).limit(5),
     supabase.from("jobs").select("id, title, scheduled_start, status, total_amount, customers(first_name, last_name, company_name)").eq("organization_id", organizationId).gte("scheduled_start", new Date().toISOString()).lte("scheduled_start", weekEnd.toISOString()).order("scheduled_start", { ascending: true }).limit(8),
     supabase
@@ -120,12 +122,13 @@ export default async function DashboardPage() {
       </section>
 
       {/* ALERTS — quick chips to redirect attention */}
-      <div id="alerts" className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div id="alerts" className="grid grid-cols-2 sm:grid-cols-6 gap-3 mb-6">
         <ActionStat label="Unpaid invoices" count={unpaidCount ?? 0} href="/invoices?status=sent" tone={(unpaidCount ?? 0) > 0 ? "warn" : "ok"} />
         <ActionStat label="Overdue" count={overdueCount ?? 0} href="/invoices?status=overdue" tone={(overdueCount ?? 0) > 0 ? "alert" : "ok"} />
         <ActionStat label="Estimates to follow up" count={followUpEstimates?.length ?? 0} href="/estimates" tone={(followUpEstimates?.length ?? 0) > 0 ? "warn" : "ok"} />
         <ActionStat label="Draft estimates" count={draftCount ?? 0} href="/estimates" />
         <ActionStat label="New leads" count={newLeadCount ?? 0} href="/leads" tone={(newLeadCount ?? 0) > 0 ? "warn" : undefined} />
+        <ActionStat label="Open follow-ups" count={openFollowUpsCount ?? 0} href="/follow-ups" tone={(openFollowUpsCount ?? 0) > 0 ? "warn" : "ok"} />
       </div>
 
       {/* Hub — six grouped tabs (mobile-first). Keeps deep navigation one tap away. */}
