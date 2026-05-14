@@ -14,7 +14,7 @@ import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/li
 import { CalendarPicker } from "@/components/calendar-picker";
 import { qboConfigured } from "@/lib/qbo";
 import { isEncryptionAvailable } from "@/lib/crypto";
-import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, type Tier } from "@/lib/billing";
+import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, PRO_ADDON_EMAIL_PER_PACK, PRO_ADDON_SMS_PER_PACK, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { isConnectConfigured } from "@/lib/stripe-connect";
 
@@ -23,10 +23,10 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string; msg?: string; qbo?: string; stripe?: string }>;
+  searchParams: Promise<{ google?: string; msg?: string; qbo?: string; stripe?: string; saved?: string; billing?: string }>;
 }) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { google, msg, qbo, stripe } = await searchParams;
+  const { google, msg, qbo, stripe, saved, billing } = await searchParams;
   const [
     { data: drive },
     { data: qboConn },
@@ -87,6 +87,9 @@ export default async function SettingsPage({
       {stripe === "denied" && <Notice tone="error">Stripe connection was declined.</Notice>}
       {stripe === "error" && <Notice tone="error">Stripe connect failed{msg ? `: ${msg}` : "."}</Notice>}
       {stripe === "unauthorized" && <Notice tone="error">Only org owners or admins can connect Stripe.</Notice>}
+      {billing === "updated" && <Notice tone="ok">Subscription updated. Welcome aboard.</Notice>}
+      {billing === "canceled" && <Notice tone="error">Checkout was canceled. Your plan didn't change.</Notice>}
+      {saved && <Notice tone="ok">{savedLabel(saved)}</Notice>}
 
       <SubscriptionCard
         currentTier={subscriptionTier}
@@ -609,6 +612,22 @@ function Notice({ tone, children }: { tone: "ok" | "error"; children: React.Reac
   return <div className={`border rounded-md p-3 text-sm mb-4 ${cls}`}>{children}</div>;
 }
 
+// Maps the ?saved=<key> query param to a user-friendly confirmation message.
+// Server actions in ./actions.ts redirect here after a successful save.
+function savedLabel(key: string): string {
+  switch (key) {
+    case "org": return "Business info saved.";
+    case "business_type": return "Business type updated.";
+    case "messaging_creds": return "Messaging keys saved.";
+    case "messaging_mode": return "Messaging mode updated.";
+    case "messaging_cleared": return "Messaging keys cleared.";
+    case "calendar": return "Linked calendar updated.";
+    case "google_disconnected": return "Google Drive disconnected.";
+    case "stripe_disconnected": return "Stripe payments disconnected.";
+    default: return "Changes saved.";
+  }
+}
+
 function SubscriptionCard({
   currentTier,
   usage,
@@ -656,6 +675,30 @@ function SubscriptionCard({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <UsageBar label="Email this month" used={usage.emailUsed} limit={usage.emailLimit} />
           <UsageBar label="SMS this month" used={usage.smsUsed} limit={usage.smsLimit} />
+        </div>
+      )}
+      {!usage.byoc && usage.quotaAddons > 0 && (
+        <div className="mb-4 text-xs text-brand-800 bg-brand-50 border border-brand-200 rounded-md p-2">
+          <strong>{usage.quotaAddons}</strong> Pro quota pack{usage.quotaAddons === 1 ? "" : "s"} active —{" "}
+          adds +{(usage.quotaAddons * PRO_ADDON_EMAIL_PER_PACK).toLocaleString()} emails and{" "}
+          +{(usage.quotaAddons * PRO_ADDON_SMS_PER_PACK).toLocaleString()} SMS to this month's quota.
+        </div>
+      )}
+      {currentTier === "pro" && subActive && !usage.byoc && (
+        <div className="mb-4 flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded-md p-3">
+          <div>
+            <strong className="text-gray-800">Need more capacity?</strong>
+            <p className="text-gray-600 mt-0.5">
+              Pro add-on packs are +{PRO_ADDON_EMAIL_PER_PACK.toLocaleString()} emails and{" "}
+              +{PRO_ADDON_SMS_PER_PACK.toLocaleString()} SMS each, stackable. Manage packs in the
+              billing portal.
+            </p>
+          </div>
+          {stripeCustomerId && (
+            <a href="/api/billing/portal" className="btn-secondary text-xs whitespace-nowrap">
+              Manage add-ons
+            </a>
+          )}
         </div>
       )}
       {usage.byoc && (
@@ -720,8 +763,8 @@ function SubscriptionCard({
       {!stripeReady && (
         <p className="text-[11px] text-gray-500 mt-3">
           Operator: set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_BILLING_WEBHOOK_SECRET</code>, and price-id env
-          vars (<code>STRIPE_PRICE_ID_BASIC</code>, <code>STRIPE_PRICE_ID_PLUS</code>, <code>STRIPE_PRICE_ID_PRO</code>)
-          to enable in-app upgrades.
+          vars (<code>STRIPE_PRICE_ID_BASIC</code>, <code>STRIPE_PRICE_ID_PLUS</code>, <code>STRIPE_PRICE_ID_PRO</code>,{" "}
+          <code>STRIPE_PRICE_ID_PRO_ADDON</code>) to enable in-app upgrades.
         </p>
       )}
     </section>

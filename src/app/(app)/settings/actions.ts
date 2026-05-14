@@ -2,7 +2,15 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { encryptString } from "@/lib/crypto";
+
+// Redirect back to /settings with a ?saved=<key> flag so the page can render a
+// confirmation Notice. Keys map to user-facing copy on the settings page.
+function savedRedirect(key: string): never {
+  revalidatePath("/settings");
+  redirect(`/settings?saved=${encodeURIComponent(key)}`);
+}
 
 export async function updateOrganization(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
@@ -26,13 +34,13 @@ export async function updateOrganization(formData: FormData) {
     recurring_reminder_months: Number(formData.get("recurring_reminder_months") || 12),
     updated_at: new Date().toISOString(),
   }).eq("id", organizationId);
-  revalidatePath("/settings");
+  savedRedirect("org");
 }
 
 export async function disconnectGoogleDrive() {
   const { supabase, organizationId } = await getSessionAndOrg();
   await supabase.from("google_drive_connections").delete().eq("organization_id", organizationId);
-  revalidatePath("/settings");
+  savedRedirect("google_disconnected");
 }
 
 export async function saveMessagingCredentials(formData: FormData) {
@@ -71,7 +79,7 @@ export async function saveMessagingCredentials(formData: FormData) {
   }
 
   await supabase.from("org_messaging_credentials").upsert(patch as any);
-  revalidatePath("/settings");
+  savedRedirect("messaging_creds");
 }
 
 export async function setMessagingMode(formData: FormData) {
@@ -84,7 +92,7 @@ export async function setMessagingMode(formData: FormData) {
       messaging_mode: mode,
       updated_at: new Date().toISOString(),
     } as any);
-  revalidatePath("/settings");
+  savedRedirect("messaging_mode");
 }
 
 export async function clearMessagingCredentials() {
@@ -100,7 +108,7 @@ export async function clearMessagingCredentials() {
       updated_at: new Date().toISOString(),
     } as any)
     .eq("organization_id", organizationId);
-  revalidatePath("/settings");
+  savedRedirect("messaging_cleared");
 }
 
 export async function disconnectStripeConnect() {
@@ -131,7 +139,7 @@ export async function disconnectStripeConnect() {
       stripe_connect_connected_at: null,
     } as any)
     .eq("id", organizationId);
-  revalidatePath("/settings");
+  savedRedirect("stripe_disconnected");
 }
 
 export async function setBusinessType(formData: FormData) {
@@ -142,8 +150,8 @@ export async function setBusinessType(formData: FormData) {
     .from("organizations")
     .update({ business_type_id, updated_at: new Date().toISOString() } as any)
     .eq("id", organizationId);
-  revalidatePath("/settings");
   revalidatePath("/dashboard");
+  savedRedirect("business_type");
 }
 
 export async function setLinkedCalendar(formData: FormData) {
@@ -154,6 +162,6 @@ export async function setLinkedCalendar(formData: FormData) {
     .from("google_drive_connections")
     .update({ calendar_id, calendar_name, updated_at: new Date().toISOString() })
     .eq("organization_id", organizationId);
-  revalidatePath("/settings");
   revalidatePath("/calendar");
+  savedRedirect("calendar");
 }

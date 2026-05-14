@@ -28,8 +28,8 @@ export const TIERS: Record<Tier, TierConfig> = {
     id: "basic",
     label: "Basic",
     monthlyPrice: 5,
-    emailPerMonth: 200,
-    smsPerMonth: 50,
+    emailPerMonth: 0,
+    smsPerMonth: 0,
     byocAvailable: false,
     seats: 1,
     automatedReviews: false,
@@ -38,10 +38,10 @@ export const TIERS: Record<Tier, TierConfig> = {
     description: "The essentials for a solo operator getting started.",
     features: [
       "1 user seat",
-      "200 platform emails / month",
-      "50 SMS messages / month",
       "Estimates, invoices & job scheduling",
+      "Customer & property records",
       "Email support",
+      "No included email or SMS (upgrade to Plus to send messages)",
     ],
     stripePriceEnvVar: "STRIPE_PRICE_ID_BASIC",
   },
@@ -49,21 +49,21 @@ export const TIERS: Record<Tier, TierConfig> = {
     id: "plus",
     label: "Plus",
     monthlyPrice: 15,
-    emailPerMonth: 1500,
-    smsPerMonth: 300,
-    byocAvailable: true,
+    emailPerMonth: 200,
+    smsPerMonth: 100,
+    byocAvailable: false,
     seats: 3,
     automatedReviews: true,
     customBranding: true,
     prioritySupport: false,
-    description: "Growing crews who need automation and bigger send volume.",
+    description: "Growing crews who need automation and outbound messaging.",
     features: [
       "Up to 3 user seats",
-      "1,500 platform emails / month",
-      "300 SMS messages / month",
+      "200 platform emails / month",
+      "100 SMS messages / month",
       "Automated review requests",
       "Custom branding on documents",
-      "Bring-your-own email & SMS keys",
+      "Upgrade to Pro for higher send volume",
     ],
     stripePriceEnvVar: "STRIPE_PRICE_ID_PLUS",
   },
@@ -71,8 +71,8 @@ export const TIERS: Record<Tier, TierConfig> = {
     id: "pro",
     label: "Pro",
     monthlyPrice: 45,
-    emailPerMonth: 5000,
-    smsPerMonth: 1000,
+    emailPerMonth: 1500,
+    smsPerMonth: 750,
     byocAvailable: true,
     seats: 0,
     automatedReviews: true,
@@ -81,17 +81,26 @@ export const TIERS: Record<Tier, TierConfig> = {
     description: "High-volume teams that need every feature and headroom to grow.",
     features: [
       "Unlimited user seats",
-      "5,000 platform emails / month",
-      "1,000 SMS messages / month",
+      "1,500 platform emails / month",
+      "750 SMS messages / month",
       "Automated review requests",
       "Custom branding on documents",
       "Bring-your-own email & SMS keys",
       "Stripe Connect for per-business payments",
       "Priority support",
+      "Add quota packs for +5,000 emails & +1,500 SMS each",
     ],
     stripePriceEnvVar: "STRIPE_PRICE_ID_PRO",
   },
 };
+
+// Pro-tier add-on. Each pack adds this much capacity on top of the Pro base.
+export const PRO_ADDON_EMAIL_PER_PACK = 5000;
+export const PRO_ADDON_SMS_PER_PACK = 1500;
+export const PRO_ADDON_PRICE_ENV_VAR = "STRIPE_PRICE_ID_PRO_ADDON";
+export function proAddonPriceId(): string | null {
+  return process.env[PRO_ADDON_PRICE_ENV_VAR] ?? null;
+}
 
 export const TIER_ORDER: Tier[] = ["basic", "plus", "pro"];
 
@@ -133,8 +142,11 @@ import { loadOrgMessagingCreds } from "@/lib/org-messaging";
 export type Usage = {
   emailUsed: number;
   smsUsed: number;
-  emailLimit: number;
-  smsLimit: number;
+  emailLimit: number; // total: tier base + addon packs
+  smsLimit: number;   // total: tier base + addon packs
+  emailBaseLimit: number; // tier-only base, no addons
+  smsBaseLimit: number;
+  quotaAddons: number; // how many add-on packs the org has
   windowStartIso: string;
   windowEndIso: string;
   tier: TierConfig;
@@ -159,7 +171,7 @@ export async function getOrgUsage(organization_id: string): Promise<Usage> {
   const [{ data: org }, creds] = await Promise.all([
     supabase
       .from("organizations")
-      .select("subscription_tier, subscription_status, trial_ends_at")
+      .select("subscription_tier, subscription_status, trial_ends_at, quota_addons")
       .eq("id", organization_id)
       .single(),
     loadOrgMessagingCreds(organization_id),
@@ -169,6 +181,10 @@ export async function getOrgUsage(organization_id: string): Promise<Usage> {
   const byoc = creds.mode === "byoc";
   const trial = trialStateFor((org as any)?.trial_ends_at);
   const subscriptionStatus = (org as any)?.subscription_status ?? null;
+  // Addons only stack on Pro. Defensive — older rows may have NULL.
+  const quotaAddons = tier.id === "pro" ? Math.max(0, Number((org as any)?.quota_addons ?? 0)) : 0;
+  const emailLimit = tier.emailPerMonth + quotaAddons * PRO_ADDON_EMAIL_PER_PACK;
+  const smsLimit = tier.smsPerMonth + quotaAddons * PRO_ADDON_SMS_PER_PACK;
 
   const [emailRes, smsRes] = await Promise.all([
     (supabase as any)
@@ -188,8 +204,11 @@ export async function getOrgUsage(organization_id: string): Promise<Usage> {
   return {
     emailUsed: emailRes?.count ?? 0,
     smsUsed: smsRes?.count ?? 0,
-    emailLimit: tier.emailPerMonth,
-    smsLimit: tier.smsPerMonth,
+    emailLimit,
+    smsLimit,
+    emailBaseLimit: tier.emailPerMonth,
+    smsBaseLimit: tier.smsPerMonth,
+    quotaAddons,
     windowStartIso: startIso,
     windowEndIso: endIso,
     tier,
@@ -223,15 +242,22 @@ export async function canSend(
   const limit = channel === "email" ? usage.emailLimit : usage.smsLimit;
   const used = channel === "email" ? usage.emailUsed : usage.smsUsed;
   if (limit <= 0) {
+    const next = usage.tier.id === "basic" ? "Upgrade to Plus" : "Upgrade";
     return {
       ok: false,
-      reason: `Your ${usage.tier.label} plan doesn't include platform ${channel}. Upgrade or switch to BYOC.`,
+      reason: `Your ${usage.tier.label} plan doesn't include platform ${channel}. ${next} to start sending.`,
     };
   }
   if (used >= limit) {
+    const next =
+      usage.tier.id === "pro"
+        ? "Add a Pro quota pack for more capacity."
+        : usage.tier.id === "plus"
+          ? "Upgrade to Pro for higher monthly limits."
+          : "Upgrade for more.";
     return {
       ok: false,
-      reason: `Monthly ${channel} quota reached (${used}/${limit}). Upgrade for more.`,
+      reason: `Monthly ${channel} quota reached (${used}/${limit}). ${next}`,
     };
   }
   return { ok: true };

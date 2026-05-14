@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getStripe } from "@/lib/stripe";
-import { TIERS, type Tier } from "@/lib/billing";
+import { TIERS, proAddonPriceId, type Tier } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -39,12 +39,27 @@ export async function POST(request: Request) {
 
   const supabase = adminClient();
 
+  // Counts the addon line-items on a subscription's items[] (sum of quantities
+  // for any item whose price.id matches STRIPE_PRICE_ID_PRO_ADDON).
+  function countAddons(sub: any): number | null {
+    const addonId = proAddonPriceId();
+    if (!addonId) return null;
+    const items = sub?.items?.data;
+    if (!Array.isArray(items)) return null;
+    let total = 0;
+    for (const it of items) {
+      if (it?.price?.id === addonId) total += Number(it?.quantity ?? 0);
+    }
+    return total;
+  }
+
   async function applySubUpdate(
     orgId: string,
     tier: Tier,
     status: string | null,
     subId: string | null,
     trialEnd: number | null,
+    quotaAddons: number | null,
   ) {
     if (!(tier in TIERS)) tier = "basic";
     const patch: Record<string, unknown> = {
@@ -54,6 +69,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
     if (trialEnd) patch.trial_ends_at = new Date(trialEnd * 1000).toISOString();
+    if (quotaAddons !== null) patch.quota_addons = quotaAddons;
     await (supabase as any).from("organizations").update(patch).eq("id", orgId);
   }
 
@@ -65,9 +81,10 @@ export async function POST(request: Request) {
       const subId = (session.subscription as string) || null;
       const customerId = (session.customer as string) || null;
       if (orgId) {
-        // The session itself doesn't carry trial_end — that comes through on
-        // the customer.subscription.updated event Stripe fires right after.
-        await applySubUpdate(orgId, tier, "active", subId, null);
+        // The session itself doesn't carry trial_end or items — those come
+        // through on the customer.subscription.updated event Stripe fires
+        // right after.
+        await applySubUpdate(orgId, tier, "active", subId, null, null);
         if (customerId) {
           await (supabase as any)
             .from("organizations")
@@ -80,13 +97,20 @@ export async function POST(request: Request) {
       const orgId = sub.metadata?.organization_id;
       const tier = (sub.metadata?.tier as Tier) || "basic";
       if (orgId) {
-        await applySubUpdate(orgId, tier, sub.status ?? "unknown", sub.id, sub.trial_end ?? null);
+        await applySubUpdate(
+          orgId,
+          tier,
+          sub.status ?? "unknown",
+          sub.id,
+          sub.trial_end ?? null,
+          countAddons(sub),
+        );
       }
     } else if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object as any;
       const orgId = sub.metadata?.organization_id;
       if (orgId) {
-        await applySubUpdate(orgId, "basic", "canceled", null, null);
+        await applySubUpdate(orgId, "basic", "canceled", null, null, 0);
       }
     }
   } catch (e) {
