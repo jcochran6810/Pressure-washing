@@ -1,6 +1,18 @@
-// Per-trade default service catalog used to seed a fresh org's `services` table
-// when the operator picks a business type. Keeping this in code (not the DB)
+// Per-trade default service catalog + custom fields used to seed a fresh org
+// when the operator picks a business type. Keeping these in code (not the DB)
 // means we can iterate on copy and pricing without a migration each time.
+
+export type CustomFieldDefault = {
+  applies_to: "customer" | "lead" | "estimate" | "job" | "invoice" | "property";
+  field_key: string;
+  field_label: string;
+  field_type:
+    | "text" | "long_text" | "number" | "currency" | "dropdown"
+    | "checkbox" | "date" | "phone" | "email" | "url";
+  options?: string[];
+  required?: boolean;
+  customer_visible?: boolean;
+};
 
 export type DefaultService = {
   name: string;
@@ -220,6 +232,157 @@ const GENERAL_HOME: DefaultService[] = [
   { name: "General maintenance visit", default_price: 195, pricing_unit: "visit", category: "Maintenance" },
   { name: "Estimate / consultation", default_price: 0, pricing_unit: "flat", category: "Estimate" },
 ];
+
+// Per-trade custom-field templates. These live on the job (most common) by
+// default; estimates inherit them implicitly via the line items. Trades that
+// have nothing trade-specific to capture (e.g. general_home) get an empty list.
+export const DEFAULT_CUSTOM_FIELDS_BY_TRADE: Record<string, CustomFieldDefault[]> = {
+  pressure_washing: [
+    { applies_to: "job", field_key: "square_footage", field_label: "Square footage", field_type: "number" },
+    { applies_to: "job", field_key: "surface_type", field_label: "Surface type", field_type: "dropdown", options: ["Concrete","Brick","Stucco","Vinyl","Wood","Composite","Pavers"] },
+    { applies_to: "job", field_key: "soft_wash", field_label: "Soft wash required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "water_source", field_label: "Water source on-site", field_type: "checkbox" },
+    { applies_to: "job", field_key: "stain_notes", field_label: "Stain / discoloration notes", field_type: "long_text" },
+  ],
+  lawn_care: [
+    { applies_to: "job", field_key: "yard_size_sqft", field_label: "Yard size (sq ft)", field_type: "number" },
+    { applies_to: "job", field_key: "gate_code", field_label: "Gate code", field_type: "text", customer_visible: false },
+    { applies_to: "job", field_key: "pets_in_yard", field_label: "Pets in yard", field_type: "checkbox" },
+    { applies_to: "job", field_key: "bag_clippings", field_label: "Bag clippings", field_type: "checkbox" },
+    { applies_to: "job", field_key: "preferred_height", field_label: "Preferred mow height", field_type: "text" },
+  ],
+  house_cleaning: [
+    { applies_to: "job", field_key: "square_footage", field_label: "Square footage", field_type: "number" },
+    { applies_to: "job", field_key: "bedrooms", field_label: "Bedrooms", field_type: "number" },
+    { applies_to: "job", field_key: "bathrooms", field_label: "Bathrooms", field_type: "number" },
+    { applies_to: "job", field_key: "cleaning_type", field_label: "Cleaning type", field_type: "dropdown", options: ["Standard","Deep","Move-in","Move-out","Recurring"] },
+    { applies_to: "job", field_key: "pets", field_label: "Pets", field_type: "checkbox" },
+    { applies_to: "job", field_key: "supplies_provided", field_label: "Supplies provided by us", field_type: "checkbox" },
+    { applies_to: "job", field_key: "access_instructions", field_label: "Access instructions", field_type: "long_text" },
+  ],
+  painting: [
+    { applies_to: "job", field_key: "interior_exterior", field_label: "Interior or exterior", field_type: "dropdown", options: ["Interior","Exterior","Both"] },
+    { applies_to: "job", field_key: "rooms_count", field_label: "Number of rooms / surfaces", field_type: "number" },
+    { applies_to: "job", field_key: "wall_condition", field_label: "Wall condition", field_type: "dropdown", options: ["Good","Minor patching","Major repair"] },
+    { applies_to: "job", field_key: "paint_supplied", field_label: "Customer supplying paint", field_type: "checkbox" },
+    { applies_to: "job", field_key: "color_notes", field_label: "Color / brand", field_type: "text" },
+    { applies_to: "job", field_key: "primer_needed", field_label: "Primer needed", field_type: "checkbox" },
+  ],
+  handyman: [
+    { applies_to: "job", field_key: "repair_description", field_label: "Repair description", field_type: "long_text" },
+    { applies_to: "job", field_key: "materials_supplied", field_label: "Customer supplying materials", field_type: "checkbox" },
+    { applies_to: "job", field_key: "ladder_needed", field_label: "Ladder needed", field_type: "checkbox" },
+    { applies_to: "job", field_key: "estimated_hours", field_label: "Estimated labor hours", field_type: "number" },
+  ],
+  hvac: [
+    { applies_to: "job", field_key: "system_type", field_label: "System type", field_type: "dropdown", options: ["Central AC","Heat pump","Furnace","Mini-split","Package unit"] },
+    { applies_to: "job", field_key: "brand", field_label: "Brand", field_type: "text" },
+    { applies_to: "job", field_key: "model", field_label: "Model number", field_type: "text" },
+    { applies_to: "job", field_key: "serial", field_label: "Serial number", field_type: "text" },
+    { applies_to: "job", field_key: "filter_size", field_label: "Filter size", field_type: "text" },
+    { applies_to: "job", field_key: "system_age_years", field_label: "System age (years)", field_type: "number" },
+    { applies_to: "job", field_key: "diagnostic_fee", field_label: "Diagnostic fee", field_type: "currency" },
+  ],
+  plumbing: [
+    { applies_to: "job", field_key: "fixture_type", field_label: "Fixture / system", field_type: "text" },
+    { applies_to: "job", field_key: "leak_active", field_label: "Active leak", field_type: "checkbox" },
+    { applies_to: "job", field_key: "shutoff_accessible", field_label: "Shutoff accessible", field_type: "checkbox" },
+    { applies_to: "job", field_key: "emergency", field_label: "Emergency call", field_type: "checkbox" },
+    { applies_to: "job", field_key: "pipe_material", field_label: "Pipe material", field_type: "dropdown", options: ["PEX","Copper","CPVC","Galvanized","Cast iron","PVC"] },
+  ],
+  electrical: [
+    { applies_to: "job", field_key: "device_type", field_label: "Device / fixture", field_type: "text" },
+    { applies_to: "job", field_key: "panel_location", field_label: "Panel location", field_type: "text" },
+    { applies_to: "job", field_key: "breaker_size", field_label: "Breaker size (amps)", field_type: "number" },
+    { applies_to: "job", field_key: "voltage", field_label: "Voltage", field_type: "dropdown", options: ["120V","240V","Both"] },
+    { applies_to: "job", field_key: "permit_needed", field_label: "Permit needed", field_type: "checkbox" },
+  ],
+  pool_service: [
+    { applies_to: "job", field_key: "pool_type", field_label: "Pool type", field_type: "dropdown", options: ["In-ground","Above-ground","Spa"] },
+    { applies_to: "job", field_key: "pool_size_gal", field_label: "Pool size (gallons)", field_type: "number" },
+    { applies_to: "job", field_key: "salt_or_chlorine", field_label: "Salt or chlorine", field_type: "dropdown", options: ["Salt","Chlorine"] },
+    { applies_to: "job", field_key: "filter_type", field_label: "Filter type", field_type: "dropdown", options: ["Cartridge","DE","Sand"] },
+    { applies_to: "job", field_key: "gate_code", field_label: "Gate code", field_type: "text" },
+  ],
+  pest_control: [
+    { applies_to: "job", field_key: "pest_type", field_label: "Pest type", field_type: "text" },
+    { applies_to: "job", field_key: "interior_exterior", field_label: "Interior / exterior", field_type: "dropdown", options: ["Interior","Exterior","Both"] },
+    { applies_to: "job", field_key: "kids_or_pets", field_label: "Children or pets present", field_type: "checkbox" },
+    { applies_to: "job", field_key: "recurring_plan", field_label: "Recurring plan", field_type: "checkbox" },
+  ],
+  junk_removal: [
+    { applies_to: "job", field_key: "load_size", field_label: "Load size", field_type: "dropdown", options: ["1/8","1/4","1/2","3/4","Full truck"] },
+    { applies_to: "job", field_key: "stairs", field_label: "Stairs involved", field_type: "checkbox" },
+    { applies_to: "job", field_key: "heavy_items", field_label: "Heavy items", field_type: "checkbox" },
+    { applies_to: "job", field_key: "donation_items", field_label: "Donation items in load", field_type: "checkbox" },
+  ],
+  roofing: [
+    { applies_to: "job", field_key: "roof_type", field_label: "Roof type", field_type: "dropdown", options: ["Asphalt shingle","Metal","Tile","Flat / TPO","Wood shake"] },
+    { applies_to: "job", field_key: "stories", field_label: "Number of stories", field_type: "number" },
+    { applies_to: "job", field_key: "pitch", field_label: "Pitch", field_type: "dropdown", options: ["Low","Medium","Steep"] },
+    { applies_to: "job", field_key: "leak_location", field_label: "Leak location", field_type: "text" },
+    { applies_to: "job", field_key: "insurance_claim", field_label: "Insurance claim involved", field_type: "checkbox" },
+  ],
+  appliance_repair: [
+    { applies_to: "job", field_key: "appliance_type", field_label: "Appliance type", field_type: "text" },
+    { applies_to: "job", field_key: "brand", field_label: "Brand", field_type: "text" },
+    { applies_to: "job", field_key: "model", field_label: "Model", field_type: "text" },
+    { applies_to: "job", field_key: "serial", field_label: "Serial", field_type: "text" },
+    { applies_to: "job", field_key: "error_code", field_label: "Error code", field_type: "text" },
+    { applies_to: "job", field_key: "warranty", field_label: "Under warranty", field_type: "checkbox" },
+  ],
+  window_cleaning: [
+    { applies_to: "job", field_key: "window_count", field_label: "Window count", field_type: "number" },
+    { applies_to: "job", field_key: "stories", field_label: "Stories", field_type: "number" },
+    { applies_to: "job", field_key: "interior_exterior", field_label: "Interior / exterior", field_type: "dropdown", options: ["Interior","Exterior","Both"] },
+    { applies_to: "job", field_key: "screens_included", field_label: "Screens included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "hard_water", field_label: "Hard water stains", field_type: "checkbox" },
+  ],
+  gutter_cleaning: [
+    { applies_to: "job", field_key: "gutter_length_ft", field_label: "Gutter length (linear ft)", field_type: "number" },
+    { applies_to: "job", field_key: "stories", field_label: "Stories", field_type: "number" },
+    { applies_to: "job", field_key: "guards_installed", field_label: "Gutter guards installed", field_type: "checkbox" },
+    { applies_to: "job", field_key: "downspouts_clogged", field_label: "Downspouts clogged", field_type: "checkbox" },
+  ],
+  carpet_cleaning: [
+    { applies_to: "job", field_key: "rooms", field_label: "Rooms", field_type: "number" },
+    { applies_to: "job", field_key: "square_footage", field_label: "Square footage", field_type: "number" },
+    { applies_to: "job", field_key: "stains", field_label: "Stains", field_type: "checkbox" },
+    { applies_to: "job", field_key: "pet_odor", field_label: "Pet odor", field_type: "checkbox" },
+    { applies_to: "job", field_key: "stairs", field_label: "Stairs", field_type: "checkbox" },
+  ],
+  mobile_detailing: [
+    { applies_to: "job", field_key: "vehicle_type", field_label: "Vehicle type", field_type: "dropdown", options: ["Sedan","SUV","Truck","Van","Motorcycle","RV"] },
+    { applies_to: "job", field_key: "package", field_label: "Service level", field_type: "dropdown", options: ["Exterior wash","Interior detail","Full detail"] },
+    { applies_to: "job", field_key: "pet_hair", field_label: "Pet hair", field_type: "checkbox" },
+    { applies_to: "job", field_key: "stains", field_label: "Interior stains", field_type: "checkbox" },
+  ],
+  landscaping: [
+    { applies_to: "job", field_key: "design_help", field_label: "Design help needed", field_type: "checkbox" },
+    { applies_to: "job", field_key: "irrigation_present", field_label: "Irrigation present", field_type: "checkbox" },
+    { applies_to: "job", field_key: "sun_shade", field_label: "Sun / shade", field_type: "dropdown", options: ["Full sun","Partial","Full shade","Mixed"] },
+    { applies_to: "job", field_key: "drainage_issues", field_label: "Drainage issues", field_type: "checkbox" },
+    { applies_to: "job", field_key: "budget_range", field_label: "Customer budget range", field_type: "currency" },
+  ],
+  dryer_vent: [
+    { applies_to: "job", field_key: "dryer_location", field_label: "Dryer location", field_type: "text" },
+    { applies_to: "job", field_key: "vent_exit", field_label: "Vent exits", field_type: "dropdown", options: ["Wall","Roof","Soffit","Other"] },
+    { applies_to: "job", field_key: "stories", field_label: "Stories", field_type: "number" },
+    { applies_to: "job", field_key: "bird_nest_suspected", field_label: "Bird nest suspected", field_type: "checkbox" },
+  ],
+  holiday_lights: [
+    { applies_to: "job", field_key: "roofline_length_ft", field_label: "Roofline length (ft)", field_type: "number" },
+    { applies_to: "job", field_key: "stories", field_label: "Stories", field_type: "number" },
+    { applies_to: "job", field_key: "lights_supplied_by", field_label: "Lights supplied by", field_type: "dropdown", options: ["Customer","Contractor"] },
+    { applies_to: "job", field_key: "trees_included", field_label: "Trees / bushes included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "removal_date", field_label: "Removal date", field_type: "date" },
+  ],
+  general_home: [],
+};
+
+export function getCustomFieldDefaultsForTrade(business_type_id: string): CustomFieldDefault[] {
+  return DEFAULT_CUSTOM_FIELDS_BY_TRADE[business_type_id] ?? [];
+}
 
 export const DEFAULT_SERVICES_BY_TRADE: Record<string, DefaultService[]> = {
   pressure_washing: PRESSURE_WASHING,

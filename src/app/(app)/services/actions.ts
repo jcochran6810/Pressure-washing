@@ -2,7 +2,7 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
-import { getDefaultsForTrade } from "@/lib/trade-defaults";
+import { getDefaultsForTrade, getCustomFieldDefaultsForTrade } from "@/lib/trade-defaults";
 
 export async function createService(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
@@ -97,6 +97,35 @@ export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
   if (toInsert.length) {
     await supabase.from("services").insert(toInsert);
   }
+
+  // Also seed any missing trade-default custom fields (best-effort).
+  const cfDefaults = getCustomFieldDefaultsForTrade(businessTypeId);
+  if (cfDefaults.length) {
+    const { data: existingCfs } = await (supabase as any)
+      .from("custom_fields")
+      .select("applies_to, field_key")
+      .eq("organization_id", organizationId);
+    const existingCfKeys = new Set(
+      (existingCfs ?? []).map((c: any) => `${c.applies_to}:${c.field_key}`),
+    );
+    const cfInsert = cfDefaults
+      .filter((d) => !existingCfKeys.has(`${d.applies_to}:${d.field_key}`))
+      .map((d, idx) => ({
+        organization_id: organizationId,
+        applies_to: d.applies_to,
+        field_key: d.field_key,
+        field_label: d.field_label,
+        field_type: d.field_type,
+        options: d.options ?? [],
+        required: !!d.required,
+        customer_visible: !!d.customer_visible,
+        sort_order: idx * 10,
+      }));
+    if (cfInsert.length) {
+      await (supabase as any).from("custom_fields").insert(cfInsert);
+    }
+  }
+
   revalidatePath("/services");
 }
 

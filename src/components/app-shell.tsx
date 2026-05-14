@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/invoices", label: "Invoices", icon: "$" },
   { href: "/payments", label: "Receipts", icon: "✓" },
   { href: "/services", label: "Services", icon: "⚐" },
+  { href: "/custom-fields", label: "Custom fields", icon: "▤" },
   { href: "/chemicals", label: "Chemicals", icon: "⚗" },
   { href: "/mix", label: "Mix calculator", icon: "≋" },
   { href: "/equipment", label: "Equipment", icon: "⚙" },

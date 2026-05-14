@@ -9,6 +9,7 @@ import { loadWorkflow } from "@/lib/workflow";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { customerDisplayName, formatCurrency, formatDateTime, statusColor } from "@/lib/utils";
+import { CustomFieldsBlock } from "@/components/custom-fields-block";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           <Field label="Property" value={(job.properties as any)?.address_line1 ?? "—"} />
         </div>
         {job.description && <p className="text-sm mt-3 whitespace-pre-wrap">{job.description}</p>}
+      </div>
+
+      <div className="mb-4">
+        <CustomFieldsBlock entityType="job" entityId={job.id} />
       </div>
 
       <section className="card-padded">

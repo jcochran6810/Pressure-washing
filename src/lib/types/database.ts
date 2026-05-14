@@ -421,6 +421,24 @@ export type Database = {
         Update: { created_at?: string | null; organization_id?: string; role?: string; user_id?: string };
         Relationships: [];
       };
+      custom_fields: {
+        Row: { id: string; organization_id: string; applies_to: string; field_key: string; field_label: string; field_type: string; options: any | null; required: boolean | null; customer_visible: boolean | null; sort_order: number | null; active: boolean | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; applies_to: string; field_key: string; field_label: string; field_type: string; options?: any | null; required?: boolean | null; customer_visible?: boolean | null; sort_order?: number | null; active?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; applies_to?: string; field_key?: string; field_label?: string; field_type?: string; options?: any | null; required?: boolean | null; customer_visible?: boolean | null; sort_order?: number | null; active?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      custom_field_values: {
+        Row: { id: string; organization_id: string; field_id: string; entity_type: string; entity_id: string; value_text: string | null; value_number: number | null; value_boolean: boolean | null; value_date: string | null; value_json: any | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; field_id: string; entity_type: string; entity_id: string; value_text?: string | null; value_number?: number | null; value_boolean?: boolean | null; value_date?: string | null; value_json?: any | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; field_id?: string; entity_type?: string; entity_id?: string; value_text?: string | null; value_number?: number | null; value_boolean?: boolean | null; value_date?: string | null; value_json?: any | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      business_types: {
+        Row: { id: string; name: string; description: string | null; icon: string | null; sort_order: number | null; active: boolean | null; created_at: string | null };
+        Insert: { id: string; name: string; description?: string | null; icon?: string | null; sort_order?: number | null; active?: boolean | null; created_at?: string | null };
+        Update: { id?: string; name?: string; description?: string | null; icon?: string | null; sort_order?: number | null; active?: boolean | null; created_at?: string | null };
+        Relationships: [];
+      };
       org_messaging_credentials: {
         Row: { organization_id: string; resend_api_key: string | null; resend_from: string | null; telnyx_api_key: string | null; telnyx_from_number: string | null; messaging_addon_enabled: boolean | null; messaging_mode: string | null; created_at: string | null; updated_at: string | null };
         Insert: { organization_id: string; resend_api_key?: string | null; resend_from?: string | null; telnyx_api_key?: string | null; telnyx_from_number?: string | null; messaging_addon_enabled?: boolean | null; messaging_mode?: string | null; created_at?: string | null; updated_at?: string | null };
