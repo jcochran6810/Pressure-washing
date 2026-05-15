@@ -39,20 +39,32 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     { data: leadsInPeriod },
     { data: recurringActive },
     { data: estimateLineItems },
+    { data: completedJobsAllTime },
+    { data: topCustomerPayments },
   ] = await Promise.all([
     supabase.from("payments").select("amount, payment_date, payment_method, customer_id").eq("organization_id", organizationId).gte("payment_date", startStr).lte("payment_date", endStr),
     supabase.from("expenses").select("amount, expense_date, vendor, category_id, tax_deductible, expense_categories(name)").eq("organization_id", organizationId).gte("expense_date", startStr).lte("expense_date", endStr),
     supabase.from("invoices").select("balance_due, due_date, status").eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]),
-    // For win-rate: estimates created in the period, by status
     supabase.from("estimates").select("status, total").eq("organization_id", organizationId).gte("issue_date", startStr).lte("issue_date", endStr),
-    // For "jobs completed" + average job value
     supabase.from("jobs").select("total_amount, actual_end").eq("organization_id", organizationId).eq("status", "completed").gte("actual_end", start.toISOString()).lte("actual_end", end.toISOString()),
-    // Best lead sources
     supabase.from("leads").select("source_id, status, lead_sources(name)").eq("organization_id", organizationId).gte("created_at", start.toISOString()).lte("created_at", end.toISOString()),
-    // Active recurring jobs for monthly recurring revenue
     (supabase as any).from("recurring_jobs").select("default_price, recurrence_kind, recurrence_interval").eq("organization_id", organizationId).eq("active", true),
-    // Top services (by line item revenue inside the period)
     supabase.from("estimate_line_items").select("description, total, service_id, estimates!inner(organization_id, issue_date, status)").eq("estimates.organization_id", organizationId).gte("estimates.issue_date", startStr).lte("estimates.issue_date", endStr),
+    // Service performance (all-time) — completed jobs with actual_start/end, joined to their estimate's line items so we can attribute duration to services.
+    supabase
+      .from("jobs")
+      .select("id, actual_start, actual_end, total_amount, estimate_id, estimates(estimate_line_items(service_id, description))")
+      .eq("organization_id", organizationId)
+      .eq("status", "completed")
+      .not("actual_start", "is", null)
+      .not("actual_end", "is", null)
+      .limit(500),
+    // Top customers by lifetime payment total.
+    supabase
+      .from("payments")
+      .select("amount, customer_id, customers(first_name, last_name, company_name)")
+      .eq("organization_id", organizationId)
+      .limit(1000),
   ]);
 
   // Trend: pull last 6 months payments and expenses separately
@@ -172,6 +184,61 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     .slice(0, 8);
   const topServiceMax = topServices[0]?.total ?? 1;
 
+  // Service performance — average actual duration per service across completed
+  // jobs. Use this to refine future estimates: "House Wash averages 2h 15m".
+  type ServicePerf = { name: string; count: number; totalMinutes: number; totalRevenue: number };
+  const perfMap = new Map<string, ServicePerf>();
+  for (const j of (completedJobsAllTime ?? []) as any[]) {
+    const start = j.actual_start ? new Date(j.actual_start).getTime() : null;
+    const end = j.actual_end ? new Date(j.actual_end).getTime() : null;
+    if (!start || !end || end <= start) continue;
+    const mins = (end - start) / 60000;
+    const items: any[] = j.estimates?.estimate_line_items ?? [];
+    if (!items.length) continue;
+    // Attribute the job's duration + revenue equally across its line items
+    const share = 1 / items.length;
+    for (const li of items) {
+      const name = (li.description as string) || "Unnamed";
+      const cur = perfMap.get(name) ?? { name, count: 0, totalMinutes: 0, totalRevenue: 0 };
+      cur.count += share;
+      cur.totalMinutes += mins * share;
+      cur.totalRevenue += Number(j.total_amount ?? 0) * share;
+      perfMap.set(name, cur);
+    }
+  }
+  const servicePerf = Array.from(perfMap.values())
+    .filter((p) => p.count >= 0.5)
+    .map((p) => ({
+      name: p.name,
+      jobs: Math.round(p.count),
+      avgMinutes: p.totalMinutes / Math.max(1, p.count),
+      avgRevenue: p.totalRevenue / Math.max(1, p.count),
+    }))
+    .sort((a, b) => b.jobs - a.jobs)
+    .slice(0, 8);
+
+  function fmtDuration(mins: number): string {
+    const h = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+
+  // Top customers — lifetime spend (paid payments).
+  const customerMap = new Map<string, { name: string; total: number }>();
+  for (const p of (topCustomerPayments ?? []) as any[]) {
+    if (!p.customer_id) continue;
+    const c = p.customers ?? {};
+    const name = c.company_name || [c.first_name, c.last_name].filter(Boolean).join(" ") || "Customer";
+    const cur = customerMap.get(p.customer_id) ?? { name, total: 0 };
+    cur.total += Number(p.amount ?? 0);
+    customerMap.set(p.customer_id, cur);
+  }
+  const topCustomers = Array.from(customerMap.entries())
+    .map(([id, v]) => ({ id, ...v }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8);
+  const topCustomerMax = topCustomers[0]?.total ?? 1;
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
@@ -254,6 +321,57 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                   </li>
                 );
               })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mb-5">
+        <section className="card">
+          <header className="px-4 py-3 border-b">
+            <h2 className="font-semibold">Service performance</h2>
+            <p className="text-xs text-gray-500">Average actual duration across completed jobs — use to refine future estimates.</p>
+          </header>
+          {!servicePerf.length ? (
+            <p className="p-4 text-sm text-gray-500">No completed jobs with recorded start/end times yet. Time data starts collecting once jobs are marked in-progress / completed.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {servicePerf.map((s) => (
+                <li key={s.name} className="px-4 py-2 text-sm">
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-medium text-gray-800 truncate pr-2">{s.name}</span>
+                    <span className="text-xs text-gray-500">{s.jobs} job{s.jobs === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+                    <span>avg duration <strong className="text-gray-700">{fmtDuration(s.avgMinutes)}</strong></span>
+                    <span>avg revenue <strong className="text-gray-700">{formatCurrency(s.avgRevenue)}</strong></span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <header className="px-4 py-3 border-b">
+            <h2 className="font-semibold">Top customers</h2>
+            <p className="text-xs text-gray-500">Lifetime payments. Your most valuable accounts.</p>
+          </header>
+          {!topCustomers.length ? (
+            <p className="p-4 text-sm text-gray-500">No payments recorded yet.</p>
+          ) : (
+            <ul className="px-4 py-3 space-y-2">
+              {topCustomers.map((c) => (
+                <li key={c.id}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <Link href={`/customers/${c.id}`} className="font-medium text-gray-800 hover:text-brand-700 truncate pr-2">{c.name}</Link>
+                    <span className="tabular-nums">{formatCurrency(c.total)}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-500" style={{ width: `${(c.total / topCustomerMax) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </section>
