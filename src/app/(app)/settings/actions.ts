@@ -147,16 +147,44 @@ export async function disconnectStripeConnect() {
   savedRedirect("stripe_disconnected");
 }
 
-export async function setBusinessType(formData: FormData) {
+// Multi-trade setter. Accepts repeated business_type_id fields plus a
+// primary_business_type_id pointing at the row that should be flagged
+// primary. First INCLUDED_BUSINESS_TYPES are free; each additional one
+// implies the per-trade add-on (operator wires the Stripe price separately).
+export async function setBusinessTypes(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
-  const business_type_id = String(formData.get("business_type_id") || "").trim();
-  if (!business_type_id) return;
+  const selected = formData.getAll("business_type_id").map((v) => String(v).trim()).filter(Boolean);
+  if (selected.length === 0) return;
+  const primary = String(formData.get("primary_business_type_id") || selected[0]).trim();
+  const unique = Array.from(new Set(selected));
+  // Force the primary to be in the selected list.
+  if (!unique.includes(primary)) unique.unshift(primary);
+
+  // Wipe + rewrite the join table (small enough to not bother with diffing).
+  await (supabase as any).from("organization_business_types").delete().eq("organization_id", organizationId);
+  const rows = unique.map((id) => ({
+    organization_id: organizationId,
+    business_type_id: id,
+    is_primary: id === primary,
+  }));
+  await (supabase as any).from("organization_business_types").insert(rows);
+
+  // Keep the singular primary column in sync so legacy reads still work.
   await supabase
     .from("organizations")
-    .update({ business_type_id, updated_at: new Date().toISOString() } as any)
+    .update({ business_type_id: primary, updated_at: new Date().toISOString() } as any)
     .eq("id", organizationId);
+
   revalidatePath("/dashboard");
+  revalidatePath("/services");
   savedRedirect("business_type");
+}
+
+// Back-compat shim for any callers still pointing at the old single-type
+// setter — accepts the same single-input form and routes through the new
+// multi-trade path.
+export async function setBusinessType(formData: FormData) {
+  return setBusinessTypes(formData);
 }
 
 export async function setLinkedCalendar(formData: FormData) {

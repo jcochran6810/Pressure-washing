@@ -479,6 +479,52 @@ export function getFormConfigForTrade(business_type_id: string): ServiceFormConf
   return { ...DEFAULT_FORM_CONFIG, ...overrides };
 }
 
+// Union form config across multiple trades — any feature enabled by ANY of
+// the selected trades is enabled. Materials list dedupes across them.
+export function getFormConfigForTrades(business_type_ids: string[]): ServiceFormConfig {
+  if (business_type_ids.length === 0) return DEFAULT_FORM_CONFIG;
+  const cfgs = business_type_ids.map(getFormConfigForTrade);
+  const materials = Array.from(new Set(cfgs.flatMap((c) => c.materials)));
+  return {
+    showMaterialModifiers: cfgs.some((c) => c.showMaterialModifiers),
+    showHeightModifier: cfgs.some((c) => c.showHeightModifier),
+    showPricePerSqft: cfgs.some((c) => c.showPricePerSqft),
+    showPricePerLinearFt: cfgs.some((c) => c.showPricePerLinearFt),
+    materials,
+  };
+}
+
+// Combined default service catalog across multiple trades, deduped by name
+// (case-insensitive) so House Wash from pressure_washing doesn't conflict
+// with a similarly-named entry from another trade.
+export function getDefaultsForTrades(business_type_ids: string[]): DefaultService[] {
+  const seen = new Set<string>();
+  const out: DefaultService[] = [];
+  for (const id of business_type_ids) {
+    for (const d of getDefaultsForTrade(id)) {
+      const key = d.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(d);
+    }
+  }
+  return out;
+}
+
+export function getCustomFieldDefaultsForTrades(business_type_ids: string[]): CustomFieldDefault[] {
+  const seen = new Set<string>();
+  const out: CustomFieldDefault[] = [];
+  for (const id of business_type_ids) {
+    for (const f of getCustomFieldDefaultsForTrade(id)) {
+      const key = `${f.applies_to}:${f.field_key}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(f);
+    }
+  }
+  return out;
+}
+
 // Recognised pricing units (used by the editor + validation later).
 export const PRICING_UNITS: { value: string; label: string }[] = [
   { value: "flat", label: "Flat rate" },

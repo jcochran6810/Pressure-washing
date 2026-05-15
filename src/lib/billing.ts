@@ -102,6 +102,21 @@ export function proAddonPriceId(): string | null {
   return process.env[PRO_ADDON_PRICE_ENV_VAR] ?? null;
 }
 
+// Multi-trade add-on. First N business types are included with every plan;
+// each additional trade is a recurring monthly charge.
+export const INCLUDED_BUSINESS_TYPES = 2;
+export const BUSINESS_TYPE_ADDON_MONTHLY_PRICE = 3.99;
+export const BUSINESS_TYPE_ADDON_PRICE_ENV_VAR = "STRIPE_PRICE_ID_BUSINESS_TYPE_ADDON";
+export function businessTypeAddonPriceId(): string | null {
+  return process.env[BUSINESS_TYPE_ADDON_PRICE_ENV_VAR] ?? null;
+}
+// Cost in USD for N total selected business types: 0 for the first INCLUDED_BUSINESS_TYPES,
+// then BUSINESS_TYPE_ADDON_MONTHLY_PRICE per extra.
+export function businessTypeAddonCost(totalTypes: number): number {
+  const extras = Math.max(0, totalTypes - INCLUDED_BUSINESS_TYPES);
+  return Number((extras * BUSINESS_TYPE_ADDON_MONTHLY_PRICE).toFixed(2));
+}
+
 export const TIER_ORDER: Tier[] = ["basic", "plus", "pro"];
 
 export function tierFor(value: string | null | undefined): TierConfig {

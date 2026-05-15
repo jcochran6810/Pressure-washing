@@ -3,7 +3,7 @@
 import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDefaultsForTrade, getCustomFieldDefaultsForTrade } from "@/lib/trade-defaults";
+import { getDefaultsForTrades, getCustomFieldDefaultsForTrades } from "@/lib/trade-defaults";
 
 export async function createService(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
@@ -76,8 +76,16 @@ export async function deleteService(id: string) {
 // looking like the button did nothing.
 export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
-  const defaults = getDefaultsForTrade(businessTypeId);
+  const { data: orgTypes } = await (supabase as any)
+    .from("organization_business_types")
+    .select("business_type_id")
+    .eq("organization_id", organizationId);
+  let businessTypeIds: string[] = (orgTypes ?? []).map((r: any) => r.business_type_id);
+  if (businessTypeIds.length === 0) {
+    const fallback = (organization as any)?.business_type_id ?? "pressure_washing";
+    businessTypeIds = [fallback];
+  }
+  const defaults = getDefaultsForTrades(businessTypeIds);
 
   const { data: existing } = await supabase
     .from("services")
@@ -108,7 +116,7 @@ export async function loadTradeDefaults(_formData?: FormData): Promise<void> {
   }
 
   let fieldsAdded = 0;
-  const cfDefaults = getCustomFieldDefaultsForTrade(businessTypeId);
+  const cfDefaults = getCustomFieldDefaultsForTrades(businessTypeIds);
   if (cfDefaults.length) {
     const { data: existingCfs } = await (supabase as any)
       .from("custom_fields")

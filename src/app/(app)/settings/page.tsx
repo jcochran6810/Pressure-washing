@@ -6,7 +6,7 @@ import {
   saveMessagingCredentials,
   clearMessagingCredentials,
   setMessagingMode,
-  setBusinessType,
+  setBusinessTypes,
   disconnectStripeConnect,
   pickTier,
   uploadLogo,
@@ -16,9 +16,10 @@ import {
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
 import { CalendarPicker } from "@/components/calendar-picker";
+import { BusinessTypesPicker } from "@/components/business-types-picker";
 import { qboConfigured } from "@/lib/qbo";
 import { isEncryptionAvailable } from "@/lib/crypto";
-import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, PRO_ADDON_EMAIL_PER_PACK, PRO_ADDON_SMS_PER_PACK, type Tier } from "@/lib/billing";
+import { getOrgUsage, TIERS, TIER_ORDER, TRIAL_DAYS, trialStateFor, hasActiveSubscription, PRO_ADDON_EMAIL_PER_PACK, PRO_ADDON_SMS_PER_PACK, INCLUDED_BUSINESS_TYPES, BUSINESS_TYPE_ADDON_MONTHLY_PRICE, businessTypeAddonCost, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { isConnectConfigured } from "@/lib/stripe-connect";
 import { OAuthPopupConnect } from "@/components/oauth-popup-connect";
@@ -37,12 +38,15 @@ export default async function SettingsPage({
     { data: qboConn },
     { data: messagingCreds },
     { data: businessTypes },
+    { data: orgBusinessTypes },
   ] = await Promise.all([
     supabase.from("google_drive_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     (supabase as any).from("qbo_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     supabase.from("org_messaging_credentials").select("*").eq("organization_id", organizationId).maybeSingle(),
     (supabase as any).from("business_types").select("*").eq("active", true).order("sort_order"),
+    (supabase as any).from("organization_business_types").select("business_type_id, is_primary").eq("organization_id", organizationId),
   ]);
+  const selectedTypeIds = new Set<string>((orgBusinessTypes ?? []).map((r: any) => r.business_type_id));
   const messagingMode: "platform" | "byoc" =
     (messagingCreds?.messaging_mode === "byoc" ? "byoc" : "platform");
   const subscriptionTier = (organization as any)?.subscription_tier ?? "basic";
@@ -111,27 +115,27 @@ export default async function SettingsPage({
 
       <section className="card-padded mb-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-          <h2 className="font-semibold">Business type</h2>
-          <span className="badge bg-gray-100 text-gray-700 capitalize">
-            {(businessTypes ?? []).find((b: any) => b.id === businessTypeId)?.name ?? businessTypeId}
+          <h2 className="font-semibold">Business types</h2>
+          <span className="badge bg-gray-100 text-gray-700">
+            {selectedTypeIds.size} selected
+            {selectedTypeIds.size > INCLUDED_BUSINESS_TYPES
+              ? ` · +$${businessTypeAddonCost(selectedTypeIds.size).toFixed(2)}/mo`
+              : ""}
           </span>
         </div>
         <p className="text-xs text-gray-500 mb-3">
-          The trade you operate in. Default service templates, checklists, custom fields, and message
-          templates use this. You can change it any time.
+          The trades you operate in. Service templates, custom fields, and the booking page adapt to your
+          selection. <strong>First {INCLUDED_BUSINESS_TYPES} trades are included free.</strong> Each
+          additional trade is <strong>${BUSINESS_TYPE_ADDON_MONTHLY_PRICE.toFixed(2)}/mo</strong>.
         </p>
-        <form action={setBusinessType} className="flex flex-wrap gap-2 items-end">
-          <label className="text-xs flex-1 min-w-[240px]">
-            Business type
-            <select name="business_type_id" defaultValue={businessTypeId} className="w-full mt-0.5">
-              {(businessTypes ?? []).map((b: any) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className="btn-secondary text-sm">Save</button>
+        <form action={setBusinessTypes}>
+          <BusinessTypesPicker
+            options={(businessTypes ?? []).map((b: any) => ({ id: b.id, name: b.name }))}
+            initialSelected={Array.from(selectedTypeIds)}
+            initialPrimary={
+              (orgBusinessTypes ?? []).find((r: any) => r.is_primary)?.business_type_id ?? businessTypeId
+            }
+          />
         </form>
       </section>
 
@@ -930,7 +934,7 @@ function SubscriptionCard({
         <p className="text-[11px] text-gray-500 mt-3">
           Operator: set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_BILLING_WEBHOOK_SECRET</code>, and price-id env
           vars (<code>STRIPE_PRICE_ID_BASIC</code>, <code>STRIPE_PRICE_ID_PLUS</code>, <code>STRIPE_PRICE_ID_PRO</code>,{" "}
-          <code>STRIPE_PRICE_ID_PRO_ADDON</code>) to enable in-app upgrades.
+          <code>STRIPE_PRICE_ID_PRO_ADDON</code>, <code>STRIPE_PRICE_ID_BUSINESS_TYPE_ADDON</code>) to enable in-app upgrades.
         </p>
       )}
     </section>

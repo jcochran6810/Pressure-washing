@@ -2,7 +2,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { PageHeader } from "@/components/page-header";
 import { createService, updateService, deleteService, updateGlobalPricingSettings, loadTradeDefaults } from "./actions";
 import { formatCurrency } from "@/lib/utils";
-import { getDefaultsForTrade, getFormConfigForTrade, PRICING_UNITS, type ServiceFormConfig } from "@/lib/trade-defaults";
+import { getDefaultsForTrades, getFormConfigForTrades, PRICING_UNITS, type ServiceFormConfig } from "@/lib/trade-defaults";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +20,19 @@ export default async function ServicesPage({
     .order("is_addon", { ascending: true })
     .order("name");
 
-  const businessTypeId = (organization as any)?.business_type_id ?? "pressure_washing";
-  const tradeDefaults = getDefaultsForTrade(businessTypeId);
-  const formConfig = getFormConfigForTrade(businessTypeId);
+  const { data: orgBusinessTypes } = await (supabase as any)
+    .from("organization_business_types")
+    .select("business_type_id")
+    .eq("organization_id", organizationId);
+  const businessTypeIds: string[] = (orgBusinessTypes ?? []).map((r: any) => r.business_type_id);
+  // Fallback to the legacy single column if the join table is empty.
+  if (businessTypeIds.length === 0) {
+    const fallback = (organization as any)?.business_type_id;
+    if (fallback) businessTypeIds.push(fallback);
+  }
+  const businessTypeId = businessTypeIds[0] ?? "pressure_washing";
+  const tradeDefaults = getDefaultsForTrades(businessTypeIds);
+  const formConfig = getFormConfigForTrades(businessTypeIds);
   const existingNames = new Set((services ?? []).map((s: any) => (s.name ?? "").toLowerCase()));
   const missingDefaults = tradeDefaults.filter((d) => !existingNames.has(d.name.toLowerCase()));
 
