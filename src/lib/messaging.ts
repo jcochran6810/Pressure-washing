@@ -39,13 +39,44 @@ export type SendResult =
   | { ok: false; reason: string };
 
 export async function sendTemplated(args: SendArgs): Promise<SendResult> {
-  const [{ data: rows }, creds] = await Promise.all([
+  const [{ data: rows }, creds, prefs] = await Promise.all([
     args.supabase
       .from("message_templates")
       .select("kind, channel, subject, body, is_default")
       .eq("organization_id", args.organizationId),
     loadOrgMessagingCreds(args.organizationId),
+    args.customerId
+      ? args.supabase
+          .from("customer_messaging_prefs")
+          .select("email_opt_out, sms_opt_out")
+          .eq("customer_id", args.customerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+
+  // Honor unsubscribe. Customer opt-outs apply to ALL sends including
+  // transactional — operator should verify legal requirements per locale.
+  const optOut = (prefs as any)?.data ?? null;
+  if (args.channel === "email" && optOut?.email_opt_out) {
+    return { ok: false, reason: "Recipient has unsubscribed from email" };
+  }
+  if (args.channel === "sms" && optOut?.sms_opt_out) {
+    return { ok: false, reason: "Recipient has unsubscribed from SMS" };
+  }
+
+  // Fetch portal token to power one-click unsubscribe headers + footer link.
+  let unsubscribeUrl: string | null = null;
+  if (args.channel === "email" && args.customerId) {
+    const { data: c } = await args.supabase
+      .from("customers")
+      .select("portal_token")
+      .eq("id", args.customerId)
+      .maybeSingle();
+    if ((c as any)?.portal_token) {
+      const origin = process.env.NEXT_PUBLIC_APP_URL || "";
+      unsubscribeUrl = `${origin}/u/${(c as any).portal_token}?channel=email`;
+    }
+  }
 
   const tpl =
     pickTemplate(rows ?? [], args.kind, args.channel) ??
@@ -61,13 +92,17 @@ export async function sendTemplated(args: SendArgs): Promise<SendResult> {
       const gate = await canSend(args.organizationId, "email");
       if (!gate.ok) return { ok: false, reason: gate.reason ?? "Email quota exceeded" };
     }
+    const footer = unsubscribeUrl
+      ? `<hr style="margin:32px 0 8px;border:none;border-top:1px solid #e2e8f0;"/><p style="color:#94a3b8;font-size:11px;">Don't want these emails? <a href="${unsubscribeUrl}" style="color:#94a3b8;">Unsubscribe</a></p>`
+      : "";
     const result = await sendEmail({
       to: args.to.email,
       subject: subject || "Message",
-      html: plainTextToEmailHtml(body),
+      html: plainTextToEmailHtml(body) + footer,
       replyTo: args.replyToEmail ?? undefined,
       apiKey: creds.resendApiKey ?? undefined,
       from: creds.resendFrom ?? undefined,
+      listUnsubscribeUrl: unsubscribeUrl,
     });
     if (creds.mode !== "byoc") {
       try {

@@ -8,6 +8,9 @@ type SendArgs = {
   replyTo?: string;
   apiKey?: string;
   from?: string;
+  // RFC 2369 / 8058 — when set, Resend / Gmail expose a one-click
+  // unsubscribe affordance in their UI.
+  listUnsubscribeUrl?: string | null;
 };
 
 export type EmailResult = { ok: true; id: string } | { ok: false; reason: string };
@@ -18,6 +21,12 @@ export async function sendEmail(args: SendArgs): Promise<EmailResult> {
   if (!key) {
     return { ok: false, reason: "Email not configured for this account" };
   }
+  const headers: Record<string, string> = args.listUnsubscribeUrl
+    ? {
+        "List-Unsubscribe": `<${args.listUnsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
+    : {};
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -30,6 +39,7 @@ export async function sendEmail(args: SendArgs): Promise<EmailResult> {
       subject: args.subject,
       html: args.html,
       reply_to: args.replyTo ? [args.replyTo] : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
     }),
   });
   if (!res.ok) {
