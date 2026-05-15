@@ -89,15 +89,19 @@ export async function POST(request: Request) {
       .single();
     if (!inv) return NextResponse.json({ received: true, note: "invoice not found" });
 
-    await supabase.from("payments").insert({
-      organization_id,
-      invoice_id,
-      customer_id: inv.customer_id,
-      amount,
-      payment_method: "stripe",
-      stripe_payment_intent_id:
-        typeof session.payment_intent === "string" ? session.payment_intent : null,
-    });
+    const { data: payment } = await supabase
+      .from("payments")
+      .insert({
+        organization_id,
+        invoice_id,
+        customer_id: inv.customer_id,
+        amount,
+        payment_method: "stripe",
+        stripe_payment_intent_id:
+          typeof session.payment_intent === "string" ? session.payment_intent : null,
+      })
+      .select("id")
+      .single();
     const new_paid = Number(inv.amount_paid ?? 0) + amount;
     const balance = Math.max(0, Number(inv.total ?? 0) - new_paid);
     const status = balance === 0 ? "paid" : "partial";
@@ -110,6 +114,28 @@ export async function POST(request: Request) {
         paid_at: status === "paid" ? new Date().toISOString() : null,
       })
       .eq("id", invoice_id);
+
+    // Send the paid-stamped receipt + record in receipt_log so the in-app
+    // workflow banner clears. Use the shared helper (also called by the
+    // in-app recordPayment and the manual "Send receipt" button).
+    const { data: invFull } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, total, customer_id, customers(first_name, last_name, company_name, email)")
+      .eq("id", invoice_id)
+      .single();
+    if (invFull) {
+      const { sendInvoiceReceiptEmail } = await import("@/lib/receipts");
+      await sendInvoiceReceiptEmail({
+        supabase,
+        organizationId: organization_id,
+        invoice: invFull as any,
+        amount,
+        paymentMethod: "stripe",
+        paymentDate: new Date().toISOString().slice(0, 10),
+        newBalance: balance,
+        paymentId: payment?.id ?? null,
+      });
+    }
   } else if (event.type === "account.application.deauthorized") {
     // Stripe fires this when a connected account is disconnected from outside
     // our app (e.g. from their Stripe dashboard). Clear our local state.

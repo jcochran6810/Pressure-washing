@@ -3,7 +3,7 @@ import type { WorkflowState } from "@/lib/workflow";
 import { CopyButton } from "./copy-button";
 import { setEstimateStatus, emailEstimateToCustomer } from "@/app/(app)/estimates/actions";
 import { setJobStatus } from "@/app/(app)/jobs/actions";
-import { emailInvoiceToCustomer, recordPayment } from "@/app/(app)/invoices/actions";
+import { emailInvoiceToCustomer, recordPayment, sendInvoiceReceipt } from "@/app/(app)/invoices/actions";
 import { ScheduleJobForm } from "./schedule-job-form";
 
 export function NextStepBanner({
@@ -189,15 +189,22 @@ export function NextStepBanner({
     );
   }
 
-  // Step 11 fallback: paid but no receipt logged yet (rare — receipt sends automatically on payment record)
+  // Step 11 fallback: paid but no receipt logged yet (rare — receipt sends
+  // automatically on in-app recordPayment + Stripe webhook). Reaching this
+  // means a payment was logged outside both paths or an earlier send failed.
   if (workflow.invoicePaid && !workflow.receiptSent) {
-    const emailInv = workflow.invoiceId ? emailInvoiceToCustomer.bind(null, workflow.invoiceId) : null;
+    const sendReceipt = workflow.invoiceId ? sendInvoiceReceipt.bind(null, workflow.invoiceId) : null;
     return (
       <Banner tone="primary" eyebrow="Last step" title="Send the receipt">
-        <p className="text-sm text-gray-700 mb-3">Send the customer a copy stamped PAID.</p>
-        {emailInv && (
-          <form action={emailInv}>
-            <button className="btn-primary text-base px-5 py-3">✉ Send receipt</button>
+        <p className="text-sm text-gray-700 mb-3">
+          Send the customer a copy stamped PAID. Records to your send log.
+          {!customerHasEmail && " Customer needs an email on file first."}
+        </p>
+        {sendReceipt && (
+          <form action={sendReceipt}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
+              ✉ Send receipt
+            </button>
           </form>
         )}
       </Banner>

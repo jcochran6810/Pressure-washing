@@ -2,12 +2,12 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
-import { receiptHtml } from "@/lib/email";
 import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
 import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
+import { sendInvoiceReceiptEmail } from "@/lib/receipts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -121,42 +121,24 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
   if (status === "paid") patch.paid_at = new Date().toISOString();
   await supabase.from("invoices").update(patch).eq("id", invoiceId);
 
-  // Send receipt if customer has email and email is configured
-  const cust: any = inv.customers;
+  // Send receipt (shared helper — also called by Stripe webhook + manual
+  // "Send receipt" button so the receipt_log + email are consistent across
+  // all three trigger paths).
   const sendReceipt = String(formData.get("send_receipt") || "on") === "on";
-  if (sendReceipt && cust?.email) {
-    const { data: org } = await supabase.from("organizations").select("name, email, currency").eq("id", organizationId).single();
-    const html = receiptHtml({
-      orgName: org?.name ?? "Your Business",
-      orgEmail: org?.email ?? null,
-      invoiceNumber: inv.invoice_number,
-      customerName: customerDisplayName(cust),
-      amount: formatCurrency(amount, org?.currency ?? "USD"),
+  if (sendReceipt) {
+    await sendInvoiceReceiptEmail({
+      supabase,
+      organizationId,
+      invoice: inv as any,
+      amount,
       paymentMethod: payment_method,
-      paymentDate: formatDate(payment_date),
-      total: formatCurrency(Number(inv.total), org?.currency ?? "USD"),
-      remainingBalance: formatCurrency(balance, org?.currency ?? "USD"),
-      fullyPaid: balance === 0,
+      paymentDate: payment_date,
+      newBalance: balance,
+      paymentId: payment?.id ?? null,
     });
-    const result = await sendOrgEmail(organizationId, {
-      to: cust.email,
-      subject: `Receipt — Invoice ${inv.invoice_number}`,
-      html,
-      replyTo: org?.email ?? undefined,
-    });
-    if (result.ok) {
-      await supabase.from("receipt_log").insert({
-        organization_id: organizationId,
-        invoice_id: invoiceId,
-        payment_id: payment?.id ?? null,
-        customer_id: inv.customer_id,
-        email_to: cust.email,
-        provider: "resend",
-        provider_id: result.id ?? null,
-        status: "sent",
-      });
-    }
   }
+
+  const cust: any = inv.customers;
 
   // If fully paid, queue a review request (sent immediately via Resend, with rating link)
   if (status === "paid") {
@@ -305,53 +287,88 @@ export async function saveInvoiceToDrive(id: string) {
 }
 
 export async function emailInvoiceToCustomer(id: string) {
+  // If this invoice is already paid, route to sendInvoiceReceipt instead —
+  // the "send invoice" CTA on a paid invoice should never re-bill them.
+  const { supabase, organizationId, organization, inv } = await loadInvoiceForDoc(id);
+  if (inv.status === "paid") {
+    await sendInvoiceReceipt(id);
+    return;
+  }
+
   // Auto-create the Stripe payment link first if Stripe is configured and we don't have one yet.
-  let paymentLink: string | null = null;
-  {
-    const { inv: pre } = await loadInvoiceForDoc(id);
-    paymentLink = pre.stripe_payment_link ?? null;
-    if (!paymentLink && getStripe()) {
-      try {
-        await createStripePaymentLink(id);
-      } catch (e) {
-        // If Stripe fails, still send the invoice without the link.
-        console.error("Stripe link generation failed:", e);
-      }
+  if (!inv.stripe_payment_link && getStripe()) {
+    try {
+      await createStripePaymentLink(id);
+    } catch (e) {
+      // If Stripe fails, still send the invoice without the link.
+      console.error("Stripe link generation failed:", e);
     }
   }
 
-  const { organizationId, organization, inv } = await loadInvoiceForDoc(id);
-  const cust: any = inv.customers;
+  // Reload after potentially creating the payment link.
+  const { inv: fresh } = await loadInvoiceForDoc(id);
+  const cust: any = fresh.customers;
   if (!cust?.email) throw new Error("Customer has no email.");
 
-  const items = (inv.invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const items = (fresh.invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const docHtml = invoiceHtml({
     org: organization,
     customer: cust,
-    invoiceNumber: inv.invoice_number,
-    issueDate: inv.issue_date,
-    dueDate: inv.due_date,
+    invoiceNumber: fresh.invoice_number,
+    issueDate: fresh.issue_date,
+    dueDate: fresh.due_date,
     items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
-    subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
-    tax: Number(inv.tax_amount), total: Number(inv.total),
-    amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
-    notes: inv.notes, terms: inv.terms, paid: inv.status === "paid",
+    subtotal: Number(fresh.subtotal), discount: Number(fresh.discount_amount), taxRate: Number(fresh.tax_rate),
+    tax: Number(fresh.tax_amount), total: Number(fresh.total),
+    amountPaid: Number(fresh.amount_paid), balanceDue: Number(fresh.balance_due),
+    notes: fresh.notes, terms: fresh.terms, paid: false,
     currency: organization?.currency,
   });
 
-  // Prepend a "Pay now" call-to-action when we have a Stripe link
-  const html = inv.stripe_payment_link
+  // Prepend a "Pay now" call-to-action when we have a Stripe link (only on
+  // unpaid invoices — paid invoices took the early return above).
+  const html = fresh.stripe_payment_link
     ? `<!doctype html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;">
         <div style="max-width:560px;margin:0 auto 16px;text-align:center;">
-          <a href="${inv.stripe_payment_link}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;border-radius:8px;font-size:16px;">Pay invoice online →</a>
+          <a href="${fresh.stripe_payment_link}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;border-radius:8px;font-size:16px;">Pay invoice online →</a>
           <p style="font-size:12px;color:#64748b;margin-top:8px;">Secure payment via Stripe</p>
         </div>
       </body></html>${docHtml}`
     : docHtml;
 
-  const subject = inv.status === "paid" ? `Receipt — Invoice ${inv.invoice_number}` : `Invoice ${inv.invoice_number} from ${organization?.name}`;
+  const subject = `Invoice ${fresh.invoice_number} from ${organization?.name}`;
   await sendOrgEmail(organizationId, { to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
-  await setInvoiceStatus(id, inv.status === "draft" ? "sent" : inv.status);
+  await setInvoiceStatus(id, fresh.status === "draft" ? "sent" : fresh.status);
+}
+
+// Send (or re-send) the paid-receipt email for an invoice. Looks up the most
+// recent payment for the receipt details. Writes to receipt_log so the
+// workflow banner clears. Wired to the "Send receipt" button on the
+// next-step banner and called by the Stripe webhook after a checkout
+// completes.
+export async function sendInvoiceReceipt(id: string) {
+  const { supabase, organizationId, inv } = await loadInvoiceForDoc(id);
+  const { data: payment } = await supabase
+    .from("payments")
+    .select("id, amount, payment_method, payment_date")
+    .eq("invoice_id", id)
+    .order("payment_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const amount = Number(payment?.amount ?? inv.amount_paid ?? 0);
+  const method = (payment as any)?.payment_method ?? "stripe";
+  const paymentDate = (payment as any)?.payment_date ?? new Date().toISOString().slice(0, 10);
+  await sendInvoiceReceiptEmail({
+    supabase,
+    organizationId,
+    invoice: inv as any,
+    amount,
+    paymentMethod: method,
+    paymentDate,
+    newBalance: Number(inv.balance_due ?? 0),
+    paymentId: payment?.id ?? null,
+  });
+  revalidatePath(`/invoices/${id}`);
 }
 
 export async function deleteInvoice(id: string) {
