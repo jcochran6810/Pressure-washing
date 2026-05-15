@@ -6,7 +6,10 @@ import {
   startImpersonation,
   setOrgDisabled,
   adjustSubscription,
+  grantCompedAccess,
+  removeCompedAccess,
 } from "../../actions";
+import { resolveOrgAccess, accessLabel } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +93,9 @@ export default async function AdminCompanyDetail({ params }: { params: Promise<{
             <span className="badge bg-brand-100 text-brand-700 capitalize">{org.subscription_tier}</span>{" "}
             {org.subscription_status && <span className="badge bg-gray-100 text-gray-700">{org.subscription_status}</span>}
             {trialDaysLeft > 0 && <span className="badge bg-blue-100 text-blue-700">{trialDaysLeft}d trial</span>}
+            {(() => { const a = resolveOrgAccess(org as any); return (
+              <span className={`badge ${a.hasAccess ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{accessLabel(a)}</span>
+            ); })()}
           </p>
           <form action={adjustSubscription} className="space-y-2 text-sm">
             <input type="hidden" name="organization_id" value={org.id} />
@@ -123,6 +129,56 @@ export default async function AdminCompanyDetail({ params }: { params: Promise<{
             </div>
             <button className="btn-primary text-sm">Save subscription</button>
           </form>
+        </section>
+
+        {/* Comped (free) access */}
+        <section className="card-padded">
+          <h2 className="font-semibold mb-2">Free / comped access</h2>
+          {org.access_source === "admin_grant" ? (
+            <>
+              <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded px-2 py-1.5 mb-2">
+                <strong>Comped {org.subscription_tier?.toUpperCase()}</strong>
+                {org.comped_until
+                  ? ` — until ${new Date(org.comped_until).toLocaleString()}`
+                  : " — no expiration"}
+              </p>
+              {org.comped_reason && <p className="text-xs text-gray-600 mb-2">{org.comped_reason}</p>}
+              {org.comped_at && <p className="text-[11px] text-gray-400 mb-3">Granted {formatDate(org.comped_at)} by {org.comped_by?.slice(0, 8)}…</p>}
+              <form action={removeCompedAccess}>
+                <input type="hidden" name="organization_id" value={org.id} />
+                <button className="btn-secondary text-sm">Remove comped access</button>
+              </form>
+              <p className="text-[11px] text-gray-500 mt-2">If they have an active Stripe sub, access will fall back to that. Otherwise the account loses access until they subscribe.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-3">
+                Grant free access to this org — used for friends, beta testers, internal demo accounts. Stripe webhooks won't override this.
+              </p>
+              <form action={grantCompedAccess} className="space-y-2 text-sm">
+                <input type="hidden" name="organization_id" value={org.id} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label>Plan tier</label>
+                    <select name="plan_tier" defaultValue="pro" className="w-full">
+                      <option value="basic">Basic</option>
+                      <option value="plus">Plus</option>
+                      <option value="pro">Pro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Expires at <span className="text-gray-400">(blank = forever)</span></label>
+                    <input name="ends_at" type="datetime-local" className="w-full" />
+                  </div>
+                </div>
+                <div>
+                  <label>Reason</label>
+                  <input name="reason" placeholder="e.g. Friend account, beta tester" className="w-full" />
+                </div>
+                <button className="btn-primary text-sm">Grant free access</button>
+              </form>
+            </>
+          )}
         </section>
 
         {/* Enable / disable */}

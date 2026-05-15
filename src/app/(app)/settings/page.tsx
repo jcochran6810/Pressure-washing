@@ -105,6 +105,8 @@ export default async function SettingsPage({
         stripeCustomerId={stripeCustomerId}
         trialEndsAt={trialEndsAt}
         subscriptionStatus={subscriptionStatus}
+        accessSource={(organization as any)?.access_source ?? null}
+        compedUntil={(organization as any)?.comped_until ?? null}
       />
 
       <section className="card-padded mb-5">
@@ -765,6 +767,8 @@ function SubscriptionCard({
   stripeCustomerId,
   trialEndsAt,
   subscriptionStatus,
+  accessSource,
+  compedUntil,
 }: {
   currentTier: Tier;
   usage: Awaited<ReturnType<typeof getOrgUsage>>;
@@ -772,11 +776,45 @@ function SubscriptionCard({
   stripeCustomerId: string | null;
   trialEndsAt: string | null;
   subscriptionStatus: string | null;
+  accessSource: string | null;
+  compedUntil: string | null;
 }) {
   const cur = TIERS[currentTier] ?? TIERS.basic;
   const trial = trialStateFor(trialEndsAt);
   const subActive = hasActiveSubscription(subscriptionStatus);
-  const trialExpired = !trial.active && !subActive;
+  const isComped =
+    accessSource === "admin_grant" || accessSource === "promo" || accessSource === "internal";
+  const compedActive = isComped && (!compedUntil || new Date(compedUntil) > new Date());
+  const trialExpired = !compedActive && !trial.active && !subActive;
+
+  // Comped accounts get a totally different card body — no tier picker, no
+  // payment messaging, just a friendly "you have free access" note.
+  if (compedActive) {
+    return (
+      <section className="card-padded mb-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h2 className="font-semibold">Subscription</h2>
+          <span className="badge bg-emerald-100 text-emerald-700">{cur.label} · Free access</span>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">{cur.description}</p>
+
+        <div className="mb-4 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-md p-4">
+          <strong>You have free access to {cur.label}.</strong>{" "}
+          {compedUntil
+            ? `Granted by the platform team — valid until ${new Date(compedUntil).toLocaleDateString()}.`
+            : "Granted by the platform team — no payment required."}
+          <p className="text-xs text-emerald-800/80 mt-1">Need a change? Get in touch with support.</p>
+        </div>
+
+        {!usage.byoc && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <UsageBar label="Email this month" used={usage.emailUsed} limit={usage.emailLimit} />
+            <UsageBar label="SMS this month" used={usage.smsUsed} limit={usage.smsLimit} />
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="card-padded mb-5">

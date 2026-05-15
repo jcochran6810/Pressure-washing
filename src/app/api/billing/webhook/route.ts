@@ -53,6 +53,25 @@ export async function POST(request: Request) {
     return total;
   }
 
+  // Look up the org's current state so we can protect comped grants from
+  // Stripe events. Per the handoff: Stripe webhooks should update Stripe
+  // fields but NOT overwrite an active admin-granted comp.
+  async function isCompedActive(orgId: string): Promise<boolean> {
+    const { data } = await (supabase as any)
+      .from("organizations")
+      .select("access_source, comped_until")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (!data) return false;
+    const isCompedSource =
+      data.access_source === "admin_grant" ||
+      data.access_source === "promo" ||
+      data.access_source === "internal";
+    if (!isCompedSource) return false;
+    if (!data.comped_until) return true;
+    return new Date(data.comped_until) > new Date();
+  }
+
   async function applySubUpdate(
     orgId: string,
     tier: Tier,
@@ -62,13 +81,20 @@ export async function POST(request: Request) {
     quotaAddons: number | null,
   ) {
     if (!(tier in TIERS)) tier = "basic";
+    const compedActive = await isCompedActive(orgId);
     const patch: Record<string, unknown> = {
-      subscription_tier: tier,
-      subscription_status: status,
+      // Always store Stripe-side bookkeeping fields.
       stripe_subscription_id: subId,
       updated_at: new Date().toISOString(),
     };
-    if (trialEnd) patch.trial_ends_at = new Date(trialEnd * 1000).toISOString();
+    if (!compedActive) {
+      // Only mutate the in-app access fields when the org isn't currently
+      // comped — otherwise Stripe events would silently revoke a friend's
+      // free Pro account when a card expires, etc.
+      patch.subscription_tier = tier;
+      patch.subscription_status = status;
+      if (trialEnd) patch.trial_ends_at = new Date(trialEnd * 1000).toISOString();
+    }
     if (quotaAddons !== null) patch.quota_addons = quotaAddons;
     await (supabase as any).from("organizations").update(patch).eq("id", orgId);
   }

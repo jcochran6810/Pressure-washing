@@ -107,3 +107,94 @@ export async function revokePlatformAdmin(formData: FormData) {
   await logAdminAction(ctx.userId, "admin.revoke", { kind: "user", id: userId });
   revalidatePath("/admin/users");
 }
+
+// Grant free comped access to an org — bypasses Stripe entirely. The friend /
+// beta tester / etc. gets the chosen tier indefinitely (ends_at=null) or
+// until a specific date. Stripe webhooks respect this and won't overwrite.
+export async function grantCompedAccess(formData: FormData) {
+  const orgId = String(formData.get("organization_id") || "").trim();
+  const tier = String(formData.get("plan_tier") || "").trim();
+  const endsAtRaw = String(formData.get("ends_at") || "").trim();
+  const reason = String(formData.get("reason") || "").trim() || null;
+  if (!orgId || !["basic", "plus", "pro"].includes(tier)) return;
+  const ctx = await requirePlatformAdmin();
+
+  const ends_at = endsAtRaw ? new Date(endsAtRaw).toISOString() : null;
+  const supabase = await createClient();
+  await supabase
+    .from("organizations")
+    .update({
+      subscription_tier: tier,
+      subscription_status: "comped",
+      access_source: "admin_grant",
+      comped_until: ends_at,
+      comped_reason: reason,
+      comped_by: ctx.userId,
+      comped_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq("id", orgId);
+
+  await (supabase as any).from("access_grants").insert({
+    organization_id: orgId,
+    plan_tier: tier,
+    access_source: "admin_grant",
+    ends_at,
+    reason,
+    granted_by: ctx.userId,
+  });
+
+  await logAdminAction(ctx.userId, "org.grant_comp", {
+    kind: "organization",
+    id: orgId,
+    payload: { tier, ends_at, reason },
+  });
+  revalidatePath(`/admin/companies/${orgId}`);
+  revalidatePath("/admin/companies");
+}
+
+export async function removeCompedAccess(formData: FormData) {
+  const orgId = String(formData.get("organization_id") || "").trim();
+  if (!orgId) return;
+  const ctx = await requirePlatformAdmin();
+  const supabase = await createClient();
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("stripe_subscription_id, subscription_status")
+    .eq("id", orgId)
+    .maybeSingle();
+
+  const hasStripe = Boolean((org as any)?.stripe_subscription_id);
+  const stripeStatus = (org as any)?.subscription_status;
+
+  const patch: Record<string, unknown> = {
+    access_source: "stripe",
+    comped_until: null,
+    comped_reason: null,
+    comped_by: null,
+    comped_at: null,
+    updated_at: new Date().toISOString(),
+  };
+  if (hasStripe) {
+    patch.subscription_status = stripeStatus && stripeStatus !== "comped" ? stripeStatus : "active";
+  } else {
+    patch.subscription_status = null;
+  }
+
+  await supabase.from("organizations").update(patch as any).eq("id", orgId);
+
+  await (supabase as any)
+    .from("access_grants")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: ctx.userId })
+    .eq("organization_id", orgId)
+    .is("revoked_at", null);
+
+  await logAdminAction(ctx.userId, "org.revoke_comp", {
+    kind: "organization",
+    id: orgId,
+    payload: { restored_to_stripe: hasStripe },
+  });
+  revalidatePath(`/admin/companies/${orgId}`);
+  revalidatePath("/admin/companies");
+}

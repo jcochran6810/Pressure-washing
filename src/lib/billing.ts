@@ -153,6 +153,15 @@ export type Usage = {
   byoc: boolean;
   trial: TrialState;
   subscriptionStatus: string | null;
+  // Raw org row fields needed by the access resolver (comped state, disabled, etc.)
+  orgRaw: {
+    subscription_tier: string | null;
+    subscription_status: string | null;
+    access_source: string | null;
+    comped_until: string | null;
+    trial_ends_at: string | null;
+    disabled_at: string | null;
+  };
 };
 
 function monthBoundsIso(): { startIso: string; endIso: string } {
@@ -171,7 +180,7 @@ export async function getOrgUsage(organization_id: string): Promise<Usage> {
   const [{ data: org }, creds] = await Promise.all([
     supabase
       .from("organizations")
-      .select("subscription_tier, subscription_status, trial_ends_at, quota_addons")
+      .select("subscription_tier, subscription_status, trial_ends_at, quota_addons, access_source, comped_until, disabled_at")
       .eq("id", organization_id)
       .single(),
     loadOrgMessagingCreds(organization_id),
@@ -215,6 +224,14 @@ export async function getOrgUsage(organization_id: string): Promise<Usage> {
     byoc,
     trial,
     subscriptionStatus,
+    orgRaw: {
+      subscription_tier: (org as any)?.subscription_tier ?? null,
+      subscription_status: subscriptionStatus,
+      access_source: (org as any)?.access_source ?? null,
+      comped_until: (org as any)?.comped_until ?? null,
+      trial_ends_at: (org as any)?.trial_ends_at ?? null,
+      disabled_at: (org as any)?.disabled_at ?? null,
+    },
   };
 }
 
@@ -232,11 +249,17 @@ export async function canSend(
   channel: "email" | "sms",
 ): Promise<{ ok: boolean; reason?: string }> {
   const usage = await getOrgUsage(organization_id);
-  if (!usage.trial.active && !hasActiveSubscription(usage.subscriptionStatus)) {
-    return {
-      ok: false,
-      reason: "Your free trial has ended. Choose a plan in Settings to keep sending.",
-    };
+  // Comped orgs bypass the trial / subscription paywall entirely — the
+  // resolver decides. canSend still enforces the channel/quota rules below.
+  const { resolveOrgAccess } = await import("@/lib/access");
+  const access = resolveOrgAccess(usage.orgRaw);
+  if (!access.hasAccess) {
+    const reason =
+      access.reason === "disabled" ? "This account has been disabled." :
+      access.reason === "past_due" ? "Payment is past due. Update billing to resume sending." :
+      access.reason === "trial_expired" ? "Your free trial has ended. Choose a plan in Settings to keep sending." :
+      "No active subscription. Choose a plan in Settings to keep sending.";
+    return { ok: false, reason };
   }
   if (usage.byoc) return { ok: true };
   const limit = channel === "email" ? usage.emailLimit : usage.smsLimit;
