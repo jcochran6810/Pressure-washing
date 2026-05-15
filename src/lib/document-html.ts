@@ -1,18 +1,23 @@
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 
-type Org = { name: string; email?: string | null; phone?: string | null; address_line1?: string | null; city?: string | null; state?: string | null; postal_code?: string | null };
+type Org = { name: string; email?: string | null; phone?: string | null; website?: string | null; address_line1?: string | null; city?: string | null; state?: string | null; postal_code?: string | null; logo_url?: string | null };
 type Customer = { first_name?: string | null; last_name?: string | null; company_name?: string | null; email?: string | null; phone?: string | null };
 type LineItem = { description: string; quantity: number; unit_price: number; total: number };
 
 function header(org: Org) {
+  const logo = org.logo_url
+    ? `<img src="${escapeHtml(org.logo_url)}" alt="${escapeHtml(org.name)}" style="max-height:64px;max-width:200px;object-fit:contain;display:block;margin-bottom:8px;" />`
+    : "";
+  const addr = [org.address_line1, org.city, org.state, org.postal_code].filter(Boolean).join(", ");
+  const contactLine = [org.phone, org.email].filter(Boolean).join(" • ");
   return `
-    <div style="display:flex;justify-content:space-between;margin-bottom:24px;">
-      <div>
-        <h1 style="margin:0 0 4px;font-size:24px;">${org.name}</h1>
-        <div style="color:#64748b;font-size:13px;line-height:1.6;">
-          ${[org.address_line1, org.city, org.state, org.postal_code].filter(Boolean).join(", ")}<br/>
-          ${org.phone ?? ""}${org.phone && org.email ? " • " : ""}${org.email ?? ""}
-        </div>
+    <div style="margin-bottom:24px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;">
+      ${logo}
+      <h1 style="margin:0 0 4px;font-size:22px;color:#0f172a;">${escapeHtml(org.name)}</h1>
+      <div style="color:#64748b;font-size:12px;line-height:1.6;">
+        ${addr ? escapeHtml(addr) + "<br/>" : ""}
+        ${contactLine ? escapeHtml(contactLine) : ""}
+        ${org.website ? `${contactLine ? " • " : ""}<a href="${escapeHtml(org.website)}" style="color:#64748b;">${escapeHtml(org.website)}</a>` : ""}
       </div>
     </div>`;
 }

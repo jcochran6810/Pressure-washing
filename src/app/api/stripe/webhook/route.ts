@@ -45,6 +45,22 @@ export async function POST(request: Request) {
     if (!session.amount_total) return NextResponse.json({ received: true });
     const supabase = adminClient();
 
+    // Estimate deposit checkout — separate flow from invoice payments. Marks
+    // deposit_paid + stamps the amount/payment id on the estimate row.
+    if (session.metadata?.kind === "estimate_deposit") {
+      const estimate_id = session.metadata?.estimate_id as string | undefined;
+      if (!estimate_id) return NextResponse.json({ received: true, note: "no estimate id" });
+      await (supabase as any)
+        .from("estimates")
+        .update({
+          deposit_paid: true,
+          status: "accepted",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", estimate_id);
+      return NextResponse.json({ received: true });
+    }
+
     // Resolve which org this event belongs to:
     //   1. Connect event → event.account is the acct_..., look up by stripe_account_id
     //   2. Legacy platform event → metadata.organization_id (single-tenant fallback)

@@ -7,6 +7,9 @@ import { encryptString } from "@/lib/crypto";
 import { TIERS, stripePriceIdFor, type Tier } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_ALLOWED = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
+
 // Redirect back to /settings with a ?saved=<key> flag so the page can render a
 // confirmation Notice. Keys map to user-facing copy on the settings page.
 function savedRedirect(key: string): never {
@@ -189,4 +192,74 @@ export async function pickTier(formData: FormData) {
     .update({ subscription_tier: tier, updated_at: new Date().toISOString() } as any)
     .eq("id", organizationId);
   savedRedirect(`tier_${tier}`);
+}
+
+// Logo upload — writes to the public 'branding' bucket at <org-id>/logo.<ext>
+// and stores the public URL on organizations.logo_url. The image is used on
+// generated PDFs (estimates, invoices) and on the customer portal header.
+export async function uploadLogo(formData: FormData) {
+  const file = formData.get("logo") as File | null;
+  if (!file || file.size === 0) {
+    redirect(`/settings?error=${encodeURIComponent("No file selected")}`);
+  }
+  if (file.size > LOGO_MAX_BYTES) {
+    redirect(`/settings?error=${encodeURIComponent("Logo too large — keep under 2 MB.")}`);
+  }
+  if (!LOGO_ALLOWED.has(file.type)) {
+    redirect(`/settings?error=${encodeURIComponent("Use PNG, JPEG, WebP, or SVG.")}`);
+  }
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const ext = file.type === "image/svg+xml" ? "svg" : file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const path = `${organizationId}/logo.${ext}`;
+  const { error: upErr } = await supabase.storage.from("branding").upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+    cacheControl: "60",
+  });
+  if (upErr) {
+    redirect(`/settings?error=${encodeURIComponent("Upload failed: " + upErr.message)}`);
+  }
+  const { data: pub } = supabase.storage.from("branding").getPublicUrl(path);
+  // Cache-bust so the new logo shows up immediately after re-upload.
+  const logo_url = `${pub.publicUrl}?v=${Date.now()}`;
+  await supabase
+    .from("organizations")
+    .update({ logo_url, updated_at: new Date().toISOString() } as any)
+    .eq("id", organizationId);
+  savedRedirect("logo");
+}
+
+export async function removeLogo() {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const url = (organization as any)?.logo_url as string | null;
+  if (url) {
+    // The path lives after the bucket name; trim the query string from cache-bust.
+    const m = url.match(/\/branding\/([^?]+)/);
+    if (m?.[1]) {
+      await supabase.storage.from("branding").remove([m[1]]);
+    }
+  }
+  await supabase
+    .from("organizations")
+    .update({ logo_url: null, updated_at: new Date().toISOString() } as any)
+    .eq("id", organizationId);
+  savedRedirect("logo_removed");
+}
+
+// Public booking widget URL slug. /book/<slug>. Validates a-z0-9- only,
+// rejects collisions, length 3-40.
+export async function setOrgSlug(formData: FormData) {
+  const raw = String(formData.get("slug") || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{2,39}$/.test(raw)) {
+    redirect(`/settings?error=${encodeURIComponent("Slug must be 3-40 chars, lowercase letters/numbers/dashes only.")}`);
+  }
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { error } = await supabase
+    .from("organizations")
+    .update({ slug: raw, updated_at: new Date().toISOString() } as any)
+    .eq("id", organizationId);
+  if (error) {
+    redirect(`/settings?error=${encodeURIComponent(error.message.includes("duplicate") ? "That slug is taken — pick another." : error.message)}`);
+  }
+  savedRedirect("slug");
 }

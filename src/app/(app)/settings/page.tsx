@@ -9,6 +9,9 @@ import {
   setBusinessType,
   disconnectStripeConnect,
   pickTier,
+  uploadLogo,
+  removeLogo,
+  setOrgSlug,
 } from "./actions";
 import { disconnectQbo } from "../accounting/actions";
 import { getCalendarAccessToken, listCalendars, type GoogleCalendar } from "@/lib/google-calendar";
@@ -25,10 +28,10 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string; msg?: string; qbo?: string; stripe?: string; saved?: string; billing?: string }>;
+  searchParams: Promise<{ google?: string; msg?: string; qbo?: string; stripe?: string; saved?: string; billing?: string; error?: string }>;
 }) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { google, msg, qbo, stripe, saved, billing } = await searchParams;
+  const { google, msg, qbo, stripe, saved, billing, error } = await searchParams;
   const [
     { data: drive },
     { data: qboConn },
@@ -52,6 +55,7 @@ export default async function SettingsPage({
   const stripeConnectReady = isConnectConfigured();
   const stripeAccountId = (organization as any)?.stripe_account_id ?? null;
   const stripeConnectEmail = (organization as any)?.stripe_connect_email ?? null;
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL ?? "https://your-domain.com";
   const usage = await getOrgUsage(organizationId);
 
   // If Google is connected with calendar scope, fetch the user's calendar list so
@@ -92,6 +96,7 @@ export default async function SettingsPage({
       {billing === "updated" && <Notice tone="ok">Subscription updated. Welcome aboard.</Notice>}
       {billing === "canceled" && <Notice tone="error">Checkout was canceled. Your plan didn't change.</Notice>}
       {saved && <Notice tone="ok">{savedLabel(saved)}</Notice>}
+      {error && <Notice tone="error">{error}</Notice>}
 
       <SubscriptionCard
         currentTier={subscriptionTier}
@@ -177,6 +182,54 @@ export default async function SettingsPage({
             <button className="btn-primary">Save</button>
           </div>
         </form>
+      </section>
+
+      <section className="card-padded mb-5">
+        <h2 className="font-semibold mb-3">Branding & public links</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <h3 className="font-semibold text-sm mb-2">Logo</h3>
+            <p className="text-xs text-gray-500 mb-2">Appears on estimate/invoice PDFs, the customer portal, and the booking page. PNG, JPEG, WebP, or SVG, under 2 MB.</p>
+            {organization?.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={organization.logo_url} alt="Current logo" className="h-20 max-w-[200px] object-contain border border-gray-200 rounded p-2 bg-white mb-2" />
+            ) : (
+              <div className="h-20 max-w-[200px] border border-dashed border-gray-300 rounded grid place-items-center text-xs text-gray-400 mb-2">No logo yet</div>
+            )}
+            <form action={uploadLogo} encType="multipart/form-data" className="flex flex-wrap items-center gap-2">
+              <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="text-xs" />
+              <button className="btn-primary text-xs">Upload</button>
+              {organization?.logo_url && (
+                <form action={removeLogo}>
+                  <button className="btn-ghost text-xs text-red-600">Remove</button>
+                </form>
+              )}
+            </form>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-sm mb-2">Public booking link</h3>
+            <p className="text-xs text-gray-500 mb-2">Share this URL so prospects can request a quote without signing in.</p>
+            <form action={setOrgSlug} className="space-y-2">
+              <div className="flex items-stretch border border-gray-300 rounded overflow-hidden">
+                <span className="px-2 py-2 bg-gray-50 text-xs text-gray-500 self-center">{appOrigin}/book/</span>
+                <input
+                  name="slug"
+                  defaultValue={(organization as any)?.slug ?? ""}
+                  placeholder="your-business"
+                  className="flex-1 border-0 text-sm focus:ring-0"
+                  required
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                {(organization as any)?.slug && (
+                  <a href={`/book/${(organization as any).slug}`} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 underline">Open booking page →</a>
+                )}
+                <button className="btn-secondary text-xs ml-auto">Save slug</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </section>
 
       <section className="card-padded mb-5">
@@ -698,6 +751,9 @@ function savedLabel(key: string): string {
     case "tier_basic": return "Plan changed to Basic ($5/mo).";
     case "tier_plus": return "Plan changed to Plus ($15/mo).";
     case "tier_pro": return "Plan changed to Pro ($45/mo).";
+    case "logo": return "Logo uploaded.";
+    case "logo_removed": return "Logo removed.";
+    case "slug": return "Public booking slug saved.";
     default: return "Changes saved.";
   }
 }

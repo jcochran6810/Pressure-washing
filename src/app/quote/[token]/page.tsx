@@ -15,8 +15,9 @@ function publicClient() {
   );
 }
 
-export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PublicQuotePage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams?: Promise<{ deposit?: string; approved?: string }> }) {
   const { token } = await params;
+  const { deposit, approved } = (await searchParams) ?? {};
   const supabase = publicClient();
   // Note: public reads require either RLS-public-policy or a server-side bypass. For now we
   // read via the anon key which won't bypass RLS. To make this work in production, run a
@@ -63,6 +64,11 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
 
           {expired && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">This estimate expired on {formatDate(est.expires_at)}.</div>}
           {alreadyResponded && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Status: {est.status}. Thanks!</div>}
+          {approved === "1" && !est.deposit_amount && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Approved — we'll be in touch shortly.</div>}
+          {deposit === "paid" && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Deposit received — thank you. We'll be in touch shortly.</div>}
+          {deposit === "canceled" && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">Deposit checkout was canceled. You can retry below.</div>}
+          {deposit === "no_connect" && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">Online deposit isn't available right now. We'll follow up with payment details.</div>}
+          {deposit === "error" && <div className="mt-3 p-3 rounded-md bg-red-50 text-red-800 text-sm">Something went wrong with the deposit. Please try again or contact us.</div>}
         </div>
 
         <div className="card-padded mb-4">
@@ -103,6 +109,18 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
             </div>
           )}
         </div>
+
+        {alreadyResponded && Number(est.deposit_amount) > 0 && !est.deposit_paid && (
+          <div className="card-padded mb-4 bg-amber-50 border-amber-200">
+            <h2 className="font-semibold mb-1">Deposit due: {formatCurrency(Number(est.deposit_amount))}</h2>
+            <p className="text-xs text-gray-600 mb-3">
+              Lock in your spot — secure online payment, refundable per terms.
+            </p>
+            <a href={`/api/quote/${token}/deposit`} className="btn-primary w-full text-base py-3 text-center inline-block">
+              Pay deposit
+            </a>
+          </div>
+        )}
 
         {!alreadyResponded && !expired && (
           <div className="card-padded">
