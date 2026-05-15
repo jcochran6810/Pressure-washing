@@ -35,9 +35,13 @@ export async function isPlatformAdmin(userId: string): Promise<boolean> {
 
 export async function requirePlatformAdmin(): Promise<AdminContext> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/admin");
+  if (!user) redirect("/admin/login");
   const ok = await isPlatformAdmin(user.id);
-  if (!ok) redirect("/dashboard");
+  if (!ok) {
+    // Don't reveal the existence of /admin to non-admins — bounce them to
+    // the regular app dashboard as if /admin didn't exist.
+    redirect("/dashboard");
+  }
   return { userId: user.id, email: user.email };
 }
 

@@ -179,11 +179,6 @@ export function AppShell({
             </form>
           </div>
         )}
-        {isAdmin && !impersonatingOrgId && (
-          <div className="bg-slate-900 text-slate-200 px-4 sm:px-6 py-1.5 text-xs flex items-center justify-end gap-3">
-            <Link href="/admin" className="hover:text-white underline">→ Platform admin dashboard</Link>
-          </div>
-        )}
         {isDemo && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
             <span>
