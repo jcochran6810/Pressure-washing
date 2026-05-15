@@ -51,6 +51,8 @@ export function AppShell({
   isDemo,
   badges,
   notifications = [],
+  isPlatformAdmin: isAdmin = false,
+  impersonatingOrgId = null,
 }: {
   children: React.ReactNode;
   orgName: string;
@@ -58,6 +60,8 @@ export function AppShell({
   isDemo?: boolean;
   badges?: Record<string, number>;
   notifications?: Notification[];
+  isPlatformAdmin?: boolean;
+  impersonatingOrgId?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -165,6 +169,21 @@ export function AppShell({
 
       {/* Main */}
       <main className="flex-1 lg:ml-60 pb-20 lg:pb-0">
+        {impersonatingOrgId && (
+          <div className="bg-amber-500 text-amber-950 px-4 sm:px-6 py-2 text-xs flex items-center justify-between gap-3">
+            <span>
+              <strong>👤 Impersonating org</strong> — actions are logged.
+            </span>
+            <form action="/api/admin/impersonate/stop" method="post">
+              <button className="underline font-semibold">Stop impersonating</button>
+            </form>
+          </div>
+        )}
+        {isAdmin && !impersonatingOrgId && (
+          <div className="bg-slate-900 text-slate-200 px-4 sm:px-6 py-1.5 text-xs flex items-center justify-end gap-3">
+            <Link href="/admin" className="hover:text-white underline">→ Platform admin dashboard</Link>
+          </div>
+        )}
         {isDemo && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
             <span>

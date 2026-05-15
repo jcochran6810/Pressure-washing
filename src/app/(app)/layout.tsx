@@ -1,10 +1,13 @@
 import { AppShell } from "@/components/app-shell";
 import { ToastFromSearchParams, ToastProvider } from "@/components/toast";
 import { getSessionAndOrg } from "@/lib/org";
+import { isPlatformAdmin, getImpersonatedOrgId } from "@/lib/admin";
 import type { Notification } from "@/components/notifications";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user, organizationId, organization } = await getSessionAndOrg();
+  const userIsAdmin = await isPlatformAdmin(user.id);
+  const impersonating = await getImpersonatedOrgId();
 
   const followUpCutoff = new Date();
   followUpCutoff.setDate(followUpCutoff.getDate() - 3);
@@ -95,6 +98,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isDemo={!!organization?.is_demo}
         badges={{ "/jobs": jobsCount ?? 0, "/invoices": invoicesCount ?? 0 }}
         notifications={notifications}
+        isPlatformAdmin={userIsAdmin}
+        impersonatingOrgId={impersonating}
       >
         {children}
       </AppShell>
