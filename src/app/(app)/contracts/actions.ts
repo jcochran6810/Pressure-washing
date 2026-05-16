@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { contractSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

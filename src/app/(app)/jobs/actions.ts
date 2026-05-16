@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { jobSchema, parseForm } from "@/lib/validation";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";

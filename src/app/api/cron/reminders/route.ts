@@ -30,13 +30,20 @@ async function handler(request: Request) {
   }
 
   const supabase = adminClient();
-  const now = new Date().toISOString();
-  const { data: due } = await supabase
-    .from("customer_reminders")
-    .select("*, customers(first_name, last_name, email), organizations(name, email)")
-    .eq("status", "scheduled")
-    .lte("scheduled_for", now)
-    .limit(50);
+
+  // Atomically claim due reminders using the RPC defined in the
+  // billing_and_safety migration. This stops Vercel cron and Supabase
+  // pg_cron from double-processing if they run concurrently.
+  const { data: claimed } = await supabase.rpc("claim_due_reminders", { p_limit: 50 });
+  const claimIds = (claimed as any[] | null)?.map((r) => r.id) ?? [];
+
+  // Re-fetch with joins for the customer/org info we need to send.
+  const { data: due } = claimIds.length
+    ? await supabase
+        .from("customer_reminders")
+        .select("*, customers(first_name, last_name, email), organizations(name, email)")
+        .in("id", claimIds)
+    : { data: [] };
 
   let sent = 0;
   let skipped = 0;

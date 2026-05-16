@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { customerSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

@@ -1,9 +1,145 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { createServerClient } from "@supabase/ssr";
+import { emailPaymentFailed, emailSubscriptionRestored } from "@/lib/billing";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
+
+// SaaS subscription event handler (platform-level events, not Connect)
+async function handlePlatformEvent(event: Stripe.Event, supabase: any) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.saas_subscription !== "1") return;
+    const orgId = session.metadata?.organization_id;
+    if (!orgId || !session.subscription) return;
+    const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+    await supabase.from("organizations").update({
+      subscription_status: "active",
+      subscription_stripe_id: subId,
+      past_due_since: null,
+      past_due_notified_at: null,
+    }).eq("id", orgId);
+    await supabase.from("notifications").insert({
+      organization_id: orgId,
+      kind: "system",
+      title: "Subscription active",
+      body: "Thanks for subscribing — full access is unlocked.",
+      url: "/billing",
+    });
+  }
+
+  if (event.type === "customer.subscription.updated") {
+    const sub = event.data.object as Stripe.Subscription;
+    const orgId = sub.metadata?.organization_id;
+    if (!orgId) return;
+    const status = mapStripeSubStatus(sub.status);
+    const update: any = {
+      subscription_status: status,
+      subscription_current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+    };
+    if (status === "active") {
+      update.past_due_since = null;
+      update.past_due_notified_at = null;
+    }
+    await supabase.from("organizations").update(update).eq("id", orgId);
+
+    // If we just transitioned from past_due → active, notify the owner.
+    if (status === "active") {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("name, email, past_due_since")
+        .eq("id", orgId)
+        .single();
+      if (org?.email && org?.past_due_since) {
+        await emailSubscriptionRestored({
+          to: org.email,
+          orgName: org.name,
+          appUrl,
+        });
+      }
+    }
+  }
+
+  if (event.type === "invoice.payment_failed") {
+    const inv = event.data.object as Stripe.Invoice;
+    const subId = typeof inv.subscription === "string" ? inv.subscription : inv.subscription?.id;
+    if (!subId) return;
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("id, name, email, past_due_notified_at")
+      .eq("subscription_stripe_id", subId)
+      .maybeSingle();
+    if (!org) return;
+
+    await supabase.from("organizations").update({
+      subscription_status: "past_due",
+      past_due_since: new Date().toISOString(),
+    }).eq("id", org.id);
+
+    await supabase.from("notifications").insert({
+      organization_id: org.id,
+      kind: "system",
+      title: "Payment failed",
+      body: "Your subscription card declined. Update payment method to restore access.",
+      url: "/billing",
+    });
+
+    // Send the email once per past-due cycle (Stripe retries 4 times in 21 days;
+    // we don't want to email on every retry).
+    const lastNotified = org.past_due_notified_at ? new Date(org.past_due_notified_at) : null;
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    if (org.email && (!lastNotified || lastNotified < dayAgo)) {
+      const amount = inv.amount_due ? `$${(inv.amount_due / 100).toFixed(2)}` : null;
+      await emailPaymentFailed({
+        to: org.email,
+        orgName: org.name,
+        amount,
+        appUrl,
+      });
+      await supabase.from("organizations").update({
+        past_due_notified_at: new Date().toISOString(),
+      }).eq("id", org.id);
+    }
+  }
+
+  if (event.type === "customer.subscription.deleted") {
+    const sub = event.data.object as Stripe.Subscription;
+    const orgId = sub.metadata?.organization_id;
+    if (!orgId) return;
+    await supabase.from("organizations").update({
+      subscription_status: "cancelled",
+      subscription_stripe_id: null,
+    }).eq("id", orgId);
+    await supabase.from("notifications").insert({
+      organization_id: orgId,
+      kind: "system",
+      title: "Subscription cancelled",
+      body: "Your records remain accessible. Resubscribe any time in /billing.",
+      url: "/billing",
+    });
+  }
+}
+
+function mapStripeSubStatus(stripeStatus: Stripe.Subscription.Status): "active" | "past_due" | "cancelled" | "trialing" {
+  switch (stripeStatus) {
+    case "active":
+    case "incomplete":
+      return "active";
+    case "trialing":
+      return "trialing";
+    case "past_due":
+    case "unpaid":
+      return "past_due";
+    case "canceled":
+    case "incomplete_expired":
+      return "cancelled";
+    default:
+      return "active";
+  }
+}
 
 function adminClient() {
   // Webhook context has no user session — use the service-role key so RLS
@@ -36,11 +172,27 @@ export async function POST(request: Request) {
 
   const supabase = adminClient();
 
+  // ============================================================
+  // PLATFORM EVENTS — SaaS subscriptions (we charge our customers)
+  // event.account is NOT set for platform events.
+  // event.account IS set for connected-account events (their customers).
+  // ============================================================
+  if (!event.account) {
+    await handlePlatformEvent(event, supabase);
+  }
+
+  // ============================================================
+  // CONNECTED ACCOUNT EVENTS — businesses charging their own customers
+  // ============================================================
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const invoice_id = session.metadata?.invoice_id;
     const organization_id = session.metadata?.organization_id;
     const contract_id = session.metadata?.contract_id;
+    const saas_subscription = session.metadata?.saas_subscription;
+
+    // SaaS subscription checkout was completed — already handled above.
+    if (saas_subscription === "1") return NextResponse.json({ received: true });
 
     // Subscription started for a contract
     if (contract_id && organization_id && session.mode === "subscription" && session.subscription) {

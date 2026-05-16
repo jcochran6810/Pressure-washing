@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { ToastFromSearchParams, ToastProvider } from "@/components/toast";
+import { SubscriptionBanner } from "@/components/subscription-banner";
 import { getSessionAndOrg } from "@/lib/org";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isDemo={!!organization?.is_demo}
         badges={{ "/jobs": jobsCount ?? 0, "/invoices": invoicesCount ?? 0 }}
       >
+        <SubscriptionBanner org={organization} />
         {children}
       </AppShell>
     </ToastProvider>

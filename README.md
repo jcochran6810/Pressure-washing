@@ -153,6 +153,27 @@ dashboard SQL editor (or run via `supabase db push` locally):
 3. `supabase/migrations/20260601000000_features_v2.sql` — audit log, notifications,
    drafts (auto-save), customer portal sessions, job chemical usage auto-deduct,
    Stripe Connect columns, MFA tracking.
+4. `supabase/migrations/20260801000000_billing_and_safety.sql` — SaaS subscription
+   columns, pg_cron backups for reminders/contracts, audit log retention,
+   atomic reminder claim (prevents Vercel ↔ Supabase cron double-sends).
+
+After migration 4: enable `pg_cron` + `pg_net` extensions in Supabase Dashboard →
+Database → Extensions, then set `app_url` and `cron_secret` in the `app_config`
+table:
+
+```sql
+update app_config set value='https://yourdomain.com' where key='app_url';
+update app_config set value='your-cron-secret' where key='cron_secret';
+```
+
+## Operational documentation
+
+In `docs/`:
+
+- [`BILLING.md`](docs/BILLING.md) — how SaaS subscription billing works, past-due flow, manual operations
+- [`TESTING.md`](docs/TESTING.md) — testing plan, what to test in what order
+- [`MONITORING.md`](docs/MONITORING.md) — Sentry + UptimeRobot setup, on-call playbook
+- [`HANDOFF.md`](docs/HANDOFF.md) — acquisition readiness, account ownership, what buyers look for
 
 ## Required environment variables
 

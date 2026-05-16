@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { parseForm, waiverSchema } from "@/lib/validation";
 import { sendTemplated, appUrl } from "@/lib/messaging";
 import { customerDisplayName } from "@/lib/utils";

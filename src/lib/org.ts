@@ -1,5 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { isSubscriptionRestricted } from "@/lib/billing";
 import { redirect } from "next/navigation";
+
+export class SubscriptionRequiredError extends Error {
+  constructor(msg = "Your subscription is paused. Update your payment method in Settings → Billing to continue.") {
+    super(msg);
+    this.name = "SubscriptionRequiredError";
+  }
+}
 
 export async function getSessionAndOrg() {
   const supabase = await createClient();
@@ -37,4 +45,16 @@ export async function getSessionAndOrg() {
     organizationId: profile.default_organization_id,
     organization: (profile as any).organizations,
   };
+}
+
+// Use this in any server action that creates, sends, or otherwise spends
+// the platform's "active" privileges. Allows read-only access when the
+// subscription is past due or cancelled — by design, the business can
+// always look up their records, just can't send new things.
+export async function getSessionAndOrgForMutation() {
+  const ctx = await getSessionAndOrg();
+  if (isSubscriptionRestricted(ctx.organization)) {
+    throw new SubscriptionRequiredError();
+  }
+  return ctx;
 }

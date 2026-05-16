@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
 import { logAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";

@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 
 export async function quickCreateCustomer(formData: FormData): Promise<{ id: string } | { error: string }> {
   const { supabase, organizationId } = await getSessionAndOrg();

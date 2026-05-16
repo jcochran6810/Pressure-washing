@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { sendEmail } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";

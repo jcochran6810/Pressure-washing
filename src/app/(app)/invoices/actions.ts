@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { getStripe } from "@/lib/stripe";
 import { sendEmail, receiptHtml } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";

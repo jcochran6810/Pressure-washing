@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionAndOrg } from "@/lib/org";
+import { getSessionAndOrgForMutation as getSessionAndOrg } from "@/lib/org";
 import { toCsv } from "@/lib/csv";
 import { pushCustomerToQbo, pushInvoiceToQbo, type QboConn } from "@/lib/qbo";
 import { revalidatePath } from "next/cache";
