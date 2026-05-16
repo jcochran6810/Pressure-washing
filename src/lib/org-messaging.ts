@@ -11,7 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail, type EmailResult } from "@/lib/email";
 import { decryptString } from "@/lib/crypto";
-import { canSend } from "@/lib/billing";
+import { canSend } from "@/lib/billing-server";
 
 export type MessagingMode = "platform" | "byoc";
 

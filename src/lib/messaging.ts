@@ -5,7 +5,7 @@
 import { sendEmail } from "@/lib/email";
 import { sendSms, normalizePhone } from "@/lib/sms";
 import { loadOrgMessagingCreds } from "@/lib/org-messaging";
-import { canSend } from "@/lib/billing";
+import { canSend } from "@/lib/billing-server";
 import {
   DEFAULT_TEMPLATES,
   pickTemplate,
