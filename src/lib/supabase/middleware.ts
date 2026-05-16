@@ -39,11 +39,16 @@ export async function updateSession(request: NextRequest) {
     path === "/" ||
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/reset-password") ||
     path.startsWith("/auth") ||
     path.startsWith("/quote/") ||
     path.startsWith("/gallery/") ||
     path.startsWith("/review/") ||
-    path.startsWith("/api/stripe/webhook") ||
+    path.startsWith("/waiver/") ||
+    path.startsWith("/portal") ||
+    path.startsWith("/api/stripe/") ||
+    path.startsWith("/api/portal/") ||
     path.startsWith("/api/cron/");
 
   if (!user && !isPublic) {

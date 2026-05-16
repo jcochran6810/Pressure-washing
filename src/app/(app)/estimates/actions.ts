@@ -5,6 +5,8 @@ import { sendEmail } from "@/lib/email";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
 import { estimateSchema, parseForm } from "@/lib/validation";
+import { logAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -114,15 +116,52 @@ export async function createEstimate(formData: FormData) {
 
 export async function setEstimateStatus(id: string, status: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("estimates")
+    .select("estimate_number, status, customer_id, total, customers(first_name, last_name, company_name)")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
   const patch: any = { status };
   if (status === "sent") patch.sent_at = new Date().toISOString();
   if (status === "accepted") patch.accepted_at = new Date().toISOString();
   await supabase.from("estimates").update(patch).eq("id", id).eq("organization_id", organizationId);
 
+  await logAudit({
+    organizationId,
+    action: status === "sent" ? "send" : "update",
+    entityType: "estimate",
+    entityId: id,
+    entityLabel: before?.estimate_number ?? null,
+    before: { status: before?.status },
+    after: { status },
+  });
+
   // Owner just accepted an estimate -> mirror what the public approval flow does
   // (accept_estimate_by_token RPC): make sure there is an open job ready to schedule.
   if (status === "accepted") {
     await ensureJobForEstimate(id, "scheduled");
+    const c: any = before?.customers;
+    const name = c ? (c.company_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()) : "customer";
+    await notify(supabase as any, {
+      organizationId,
+      kind: "estimate_accepted",
+      title: `Estimate accepted — ${before?.estimate_number ?? ""}`,
+      body: `${name} accepted your estimate`,
+      entityType: "estimate",
+      entityId: id,
+      url: `/estimates/${id}`,
+    });
+  }
+  if (status === "declined") {
+    await notify(supabase as any, {
+      organizationId,
+      kind: "estimate_declined",
+      title: `Estimate declined — ${before?.estimate_number ?? ""}`,
+      entityType: "estimate",
+      entityId: id,
+      url: `/estimates/${id}`,
+    });
   }
 
   revalidatePath(`/estimates/${id}`);
@@ -315,9 +354,98 @@ export async function sendEstimateViaTemplate(id: string, channel: "email" | "sm
   revalidatePath(`/estimates/${id}`);
 }
 
+export async function updateEstimate(id: string, formData: FormData) {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("estimates")
+    .select("estimate_number, status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!before) throw new Error("Estimate not found");
+  if (before.status === "converted" || before.status === "accepted") {
+    throw new Error("This estimate is locked. Revert its status first to edit.");
+  }
+
+  const validated = parseForm(estimateSchema, formData);
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const expires_at = validated.expires_at || null;
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
+  const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
+  const items = parseLineItems(formData);
+  const notes = validated.notes ?? null;
+  const terms = validated.terms ?? null;
+
+  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const globalMin = Number(organization?.global_min_job_price ?? 0);
+  if (globalMin > 0 && subtotal < globalMin) {
+    subtotal = globalMin;
+  }
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  const depositThreshold = Number(organization?.deposit_threshold ?? 0);
+  const depositPct = Number(organization?.deposit_percentage ?? 0.25);
+  const deposit_amount = depositThreshold > 0 && total >= depositThreshold ? Math.round(total * depositPct * 100) / 100 : null;
+
+  await supabase.from("estimates").update({
+    issue_date, expires_at,
+    tax_rate, discount_amount, tax_amount, subtotal, total,
+    duration_minutes, buffer_minutes, deposit_amount,
+    notes, terms,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id).eq("organization_id", organizationId);
+
+  await supabase.from("estimate_line_items").delete().eq("estimate_id", id);
+  if (items.length) {
+    await supabase.from("estimate_line_items").insert(
+      items.map((i, idx) => ({
+        estimate_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
+    );
+  }
+
+  await logAudit({
+    organizationId,
+    action: "update",
+    entityType: "estimate",
+    entityId: id,
+    entityLabel: before.estimate_number,
+    after: { subtotal, total, line_items: items.length },
+  });
+
+  // Clear any auto-save draft for this estimate
+  await supabase.from("drafts").delete().eq("entity_type", "estimate").eq("entity_id", id);
+
+  revalidatePath(`/estimates/${id}`);
+  revalidatePath("/estimates");
+  redirect(`/estimates/${id}`);
+}
+
 export async function deleteEstimate(id: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("estimates")
+    .select("id, estimate_number, total, status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
   await supabase.from("estimates").delete().eq("id", id).eq("organization_id", organizationId);
+  await logAudit({
+    organizationId,
+    action: "delete",
+    entityType: "estimate",
+    entityId: id,
+    entityLabel: before?.estimate_number ?? null,
+    before,
+  });
   revalidatePath("/estimates");
   redirect("/estimates");
 }

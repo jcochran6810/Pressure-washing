@@ -3,6 +3,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { createEstimate } from "../actions";
 import { LineItemEditor } from "@/components/line-item-editor";
 import { CustomerPicker } from "@/components/customer-picker";
+import { AutoSave } from "@/components/auto-save";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,8 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
       <Link href="/estimates" className="text-sm text-brand-600 hover:underline">← Estimates</Link>
       <h1 className="text-2xl font-bold mt-2 mb-5">New estimate</h1>
 
-      <form action={createEstimate} className="space-y-5">
+      <form id="estimate-new-form" action={createEstimate} className="space-y-5">
+        <AutoSave entityType="estimate" formId="estimate-new-form" />
         <div className="card-padded grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <CustomerPicker initialCustomers={(customers as any) ?? []} defaultCustomerId={customer} />

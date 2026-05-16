@@ -52,8 +52,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
-          <form action={emailInv}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
+          <a href={`/api/documents/invoices/${inv.id}/html`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
+          {inv.status !== "paid" && inv.status !== "void" && (
+            <Link href={`/invoices/${inv.id}/edit`} className="btn-secondary">Edit</Link>
+          )}
+          <form action={emailInv}><button className="btn-secondary" disabled={!hasEmail}>Email invoice</button></form>
           <form action={sendEmailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>
           <form action={sendSmsTpl}><button className="btn-secondary" disabled={!hasPhone}>Send SMS</button></form>
           {isUnpaid && (

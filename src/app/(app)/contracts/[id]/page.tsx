@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { deleteContract, runContractNow, setContractStatus } from "../actions";
+import { SubscriptionPanel } from "@/components/subscription-panel";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, organizationId } = await getSessionAndOrg();
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { data: c } = await (supabase as any)
     .from("contracts")
     .select("*, customers(*), properties(*)")
@@ -60,6 +61,14 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
         </div>
         {c.notes && <p className="text-sm mt-3 whitespace-pre-wrap text-gray-700">{c.notes}</p>}
       </div>
+
+      <SubscriptionPanel
+        contractId={c.id}
+        subscriptionId={c.stripe_subscription_id ?? null}
+        defaultAmount={Number(c.default_amount ?? 0)}
+        cadenceMonths={Number(c.cadence_months ?? 1)}
+        stripeConnectStatus={organization?.stripe_connect_status ?? null}
+      />
 
       <div className="card-padded mb-4">
         <h2 className="font-semibold mb-2">Service template</h2>

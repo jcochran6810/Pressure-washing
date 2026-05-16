@@ -30,20 +30,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
 
-  const [{ data: payments }, { data: expenses }, { data: categories }, { data: outstanding }, { data: monthlySeries }] = await Promise.all([
+  const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1); sixMonthsAgo.setHours(0, 0, 0, 0);
+  const sixMonthsStr = sixMonthsAgo.toISOString().slice(0, 10);
+
+  const [{ data: payments }, { data: expenses }, { data: categories }, { data: outstanding }, { data: paymentsAll }, { data: expensesAll }] = await Promise.all([
     supabase.from("payments").select("amount, payment_date, payment_method, customer_id").eq("organization_id", organizationId).gte("payment_date", startStr).lte("payment_date", endStr),
     supabase.from("expenses").select("amount, expense_date, vendor, category_id, tax_deductible, expense_categories(name)").eq("organization_id", organizationId).gte("expense_date", startStr).lte("expense_date", endStr),
     supabase.from("expense_categories").select("*").eq("organization_id", organizationId),
     supabase.from("invoices").select("balance_due, due_date, status").eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]),
-    // For trend: last 6 months payments + expenses
-    supabase.rpc as any, // placeholder removed below
-  ]);
-
-  // Trend: pull last 6 months payments and expenses separately
-  const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1); sixMonthsAgo.setHours(0, 0, 0, 0);
-  const [{ data: paymentsAll }, { data: expensesAll }] = await Promise.all([
-    supabase.from("payments").select("amount, payment_date").eq("organization_id", organizationId).gte("payment_date", sixMonthsAgo.toISOString().slice(0, 10)),
-    supabase.from("expenses").select("amount, expense_date").eq("organization_id", organizationId).gte("expense_date", sixMonthsAgo.toISOString().slice(0, 10)),
+    supabase.from("payments").select("amount, payment_date").eq("organization_id", organizationId).gte("payment_date", sixMonthsStr),
+    supabase.from("expenses").select("amount, expense_date").eq("organization_id", organizationId).gte("expense_date", sixMonthsStr),
   ]);
 
   const revenue = (payments ?? []).reduce((s, p) => s + Number(p.amount ?? 0), 0);

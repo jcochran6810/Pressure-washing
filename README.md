@@ -142,18 +142,17 @@ All tables enforce RLS via the `is_org_member(org_id)` function. Sign-up trigger
 categories / lead sources. Public read/update on quote, gallery, and review
 tables is scoped by random token.
 
-Run the latest migration before using the new features:
+Run migrations **in order** before using the app. Paste each file into the Supabase
+dashboard SQL editor (or run via `supabase db push` locally):
 
-```bash
-# from the Supabase dashboard SQL editor, paste the contents of:
-supabase/migrations/20260513120000_features_pack.sql
-```
-
-That migration adds: `contracts`, `contract_runs`, `waivers`, `waiver_signatures`,
-`photo_annotations`, `message_templates`, `accounting_exports`, `qbo_connections`,
-`sms_log`; plus an `annotated_url` column on `photo_attachments`, `qbo_id` /
-`qbo_synced_at` on `customers` and `invoices`, telnyx columns on `organizations`,
-and the public-quote RLS policy.
+1. `supabase/migrations/20260101000000_baseline.sql` — base schema (orgs, customers,
+   estimates, invoices, jobs, payments, services, leads, etc.) + `is_org_member`,
+   `handle_new_user`, `accept_estimate_by_token`, storage buckets.
+2. `supabase/migrations/20260513120000_features_pack.sql` — contracts/recurring,
+   waivers, photo annotations, message templates, QBO/Telnyx, SMS log, public quote RLS.
+3. `supabase/migrations/20260601000000_features_v2.sql` — audit log, notifications,
+   drafts (auto-save), customer portal sessions, job chemical usage auto-deduct,
+   Stripe Connect columns, MFA tracking.
 
 ## Required environment variables
 
@@ -161,6 +160,7 @@ and the public-quote RLS policy.
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | All |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All |
+| `SUPABASE_SERVICE_ROLE_KEY` | Stripe webhook, cron jobs, customer portal token validation |
 | `NEXT_PUBLIC_APP_URL` | Public links, OAuth redirects |
 | `STRIPE_SECRET_KEY` | Stripe payment links |
 | `STRIPE_WEBHOOK_SECRET` | Stripe auto-payment recording |

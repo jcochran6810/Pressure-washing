@@ -6,11 +6,12 @@ import type Stripe from "stripe";
 export const runtime = "nodejs";
 
 function adminClient() {
-  // Webhook context — no user. We use anon key + service role bypass via metadata-validated writes.
-  // For production, swap to SUPABASE_SERVICE_ROLE_KEY.
+  // Webhook context has no user session — use the service-role key so RLS
+  // doesn't block writes. Metadata on the Stripe session is validated below.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    key,
     { cookies: { getAll() { return []; }, setAll() {} } },
   );
 }
@@ -33,16 +34,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `bad signature: ${err.message}` }, { status: 400 });
   }
 
+  const supabase = adminClient();
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const invoice_id = session.metadata?.invoice_id;
     const organization_id = session.metadata?.organization_id;
+    const contract_id = session.metadata?.contract_id;
+
+    // Subscription started for a contract
+    if (contract_id && organization_id && session.mode === "subscription" && session.subscription) {
+      const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+      await supabase.from("contracts").update({
+        stripe_subscription_id: subId,
+      }).eq("id", contract_id).eq("organization_id", organization_id);
+      await supabase.from("notifications").insert({
+        organization_id,
+        kind: "system",
+        title: "Subscription started",
+        body: `Customer signed up for the recurring billing on a contract`,
+        entity_type: "contract",
+        entity_id: contract_id,
+        url: `/contracts/${contract_id}`,
+      });
+    }
+
+    // One-off payment link for an invoice
     if (invoice_id && organization_id && session.amount_total) {
-      const supabase = adminClient();
       const amount = session.amount_total / 100;
       const { data: inv } = await supabase
         .from("invoices")
-        .select("customer_id, total, amount_paid")
+        .select("customer_id, total, amount_paid, invoice_number")
         .eq("id", invoice_id)
         .single();
       if (inv) {
@@ -63,8 +85,66 @@ export async function POST(request: Request) {
           status,
           paid_at: status === "paid" ? new Date().toISOString() : null,
         }).eq("id", invoice_id);
+        await supabase.from("notifications").insert({
+          organization_id,
+          kind: "payment_received",
+          title: `Stripe payment received`,
+          body: `${inv.invoice_number} — $${amount.toFixed(2)}`,
+          entity_type: "invoice",
+          entity_id: invoice_id,
+          url: `/invoices/${invoice_id}`,
+        });
       }
     }
+  }
+
+  // Recurring subscription invoice paid — record on contract's customer
+  if (event.type === "invoice.paid") {
+    const stripeInv = event.data.object as Stripe.Invoice;
+    const subId = typeof stripeInv.subscription === "string" ? stripeInv.subscription : stripeInv.subscription?.id;
+    if (subId) {
+      const { data: contract } = await supabase
+        .from("contracts")
+        .select("id, organization_id, customer_id, name")
+        .eq("stripe_subscription_id", subId)
+        .maybeSingle();
+      if (contract) {
+        const amount = (stripeInv.amount_paid ?? 0) / 100;
+        await supabase.from("payments").insert({
+          organization_id: contract.organization_id,
+          customer_id: contract.customer_id,
+          amount,
+          payment_method: "stripe",
+          stripe_payment_intent_id: typeof stripeInv.payment_intent === "string" ? stripeInv.payment_intent : null,
+          notes: `Subscription payment — ${contract.name}`,
+        });
+        await supabase.from("notifications").insert({
+          organization_id: contract.organization_id,
+          kind: "payment_received",
+          title: "Subscription charge succeeded",
+          body: `${contract.name} — $${amount.toFixed(2)}`,
+          entity_type: "contract",
+          entity_id: contract.id,
+          url: `/contracts/${contract.id}`,
+        });
+      }
+    }
+  }
+
+  if (event.type === "customer.subscription.deleted") {
+    const sub = event.data.object as Stripe.Subscription;
+    await supabase.from("contracts").update({ stripe_subscription_id: null })
+      .eq("stripe_subscription_id", sub.id);
+  }
+
+  // Stripe Connect account updated — sync our organization status
+  if (event.type === "account.updated") {
+    const acct = event.data.object as Stripe.Account;
+    const status = acct.charges_enabled && acct.payouts_enabled ? "active" : acct.details_submitted ? "pending" : "onboarding";
+    await supabase.from("organizations").update({
+      stripe_connect_status: status,
+      stripe_connect_connected_at: status === "active" ? new Date().toISOString() : null,
+    }).eq("stripe_connect_account_id", acct.id);
   }
 
   return NextResponse.json({ received: true });

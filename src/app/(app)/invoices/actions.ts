@@ -7,6 +7,8 @@ import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
 import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
+import { logAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -120,8 +122,26 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
   if (status === "paid") patch.paid_at = new Date().toISOString();
   await supabase.from("invoices").update(patch).eq("id", invoiceId);
 
-  // Send receipt if customer has email and email is configured
   const cust: any = inv.customers;
+  await logAudit({
+    organizationId,
+    action: "pay",
+    entityType: "invoice",
+    entityId: invoiceId,
+    entityLabel: inv.invoice_number,
+    after: { amount, payment_method, status },
+  });
+  await notify(supabase as any, {
+    organizationId,
+    kind: "payment_received",
+    title: `Payment received — ${formatCurrency(amount)}`,
+    body: `${customerDisplayName(cust)} • ${inv.invoice_number}${status === "paid" ? " (paid in full)" : ""}`,
+    entityType: "invoice",
+    entityId: invoiceId,
+    url: `/invoices/${invoiceId}`,
+  });
+
+  // Send receipt if customer has email and email is configured
   const sendReceipt = String(formData.get("send_receipt") || "on") === "on";
   if (sendReceipt && cust?.email) {
     const { data: org } = await supabase.from("organizations").select("name, email, currency").eq("id", organizationId).single();
@@ -328,9 +348,91 @@ export async function emailInvoiceToCustomer(id: string) {
   await setInvoiceStatus(id, inv.status === "draft" ? "sent" : inv.status);
 }
 
+export async function updateInvoice(id: string, formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("invoices")
+    .select("invoice_number, status, amount_paid")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!before) throw new Error("Invoice not found");
+  if (before.status === "paid" || before.status === "void") {
+    throw new Error("This invoice is locked. Issue a credit note instead.");
+  }
+
+  const validated = parseForm(invoiceSchema, formData);
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const due_date = validated.due_date || null;
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const items = parseLineItems(formData);
+  const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  const amountPaid = Number(before.amount_paid ?? 0);
+  if (total < amountPaid) {
+    throw new Error(`New total (${total.toFixed(2)}) is less than already-paid amount (${amountPaid.toFixed(2)}).`);
+  }
+  const balance_due = Math.max(0, total - amountPaid);
+  const status = balance_due === 0 && amountPaid > 0 ? "paid" : (amountPaid > 0 ? "partial" : before.status);
+
+  await supabase.from("invoices").update({
+    issue_date, due_date,
+    tax_rate, discount_amount, tax_amount, subtotal, total, balance_due, status,
+    notes: validated.notes ?? null,
+    terms: validated.terms ?? null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id).eq("organization_id", organizationId);
+
+  await supabase.from("invoice_line_items").delete().eq("invoice_id", id);
+  if (items.length) {
+    await supabase.from("invoice_line_items").insert(
+      items.map((i, idx) => ({
+        invoice_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
+    );
+  }
+
+  await logAudit({
+    organizationId,
+    action: "update",
+    entityType: "invoice",
+    entityId: id,
+    entityLabel: before.invoice_number,
+    after: { subtotal, total, balance_due, line_items: items.length },
+  });
+
+  await supabase.from("drafts").delete().eq("entity_type", "invoice").eq("entity_id", id);
+
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${id}`);
+}
+
 export async function deleteInvoice(id: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, total, status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
   await supabase.from("invoices").delete().eq("id", id).eq("organization_id", organizationId);
+  await logAudit({
+    organizationId,
+    action: "delete",
+    entityType: "invoice",
+    entityId: id,
+    entityLabel: before?.invoice_number ?? null,
+    before,
+  });
   revalidatePath("/invoices");
   redirect("/invoices");
 }

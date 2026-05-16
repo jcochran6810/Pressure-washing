@@ -23,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <ToastFromSearchParams />
       <AppShell
         orgName={organization?.name ?? "Your Business"}
+        orgLogo={organization?.logo_url ?? null}
         userEmail={user.email ?? "Demo user"}
         isDemo={!!organization?.is_demo}
         badges={{ "/jobs": jobsCount ?? 0, "/invoices": invoicesCount ?? 0 }}

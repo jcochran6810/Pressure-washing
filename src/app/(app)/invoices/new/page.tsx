@@ -3,6 +3,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { createInvoice } from "../actions";
 import { LineItemEditor } from "@/components/line-item-editor";
 import { CustomerPicker } from "@/components/customer-picker";
+import { AutoSave } from "@/components/auto-save";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,8 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
     <div className="max-w-3xl">
       <Link href="/invoices" className="text-sm text-brand-600 hover:underline">← Invoices</Link>
       <h1 className="text-2xl font-bold mt-2 mb-5">New invoice</h1>
-      <form action={createInvoice} className="space-y-5">
+      <form id="invoice-new-form" action={createInvoice} className="space-y-5">
+        <AutoSave entityType="invoice" formId="invoice-new-form" />
         <div className="card-padded grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <CustomerPicker initialCustomers={(customers as any) ?? []} defaultCustomerId={customer} />

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { NotificationsBell } from "./notifications-bell";
 
 type NavItem = { href: string; label: string; icon: string };
 
@@ -27,6 +28,8 @@ const NAV: NavItem[] = [
   { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/accounting", label: "Accounting sync", icon: "⇄" },
   { href: "/waivers", label: "Waivers", icon: "✍" },
+  { href: "/tax", label: "Tax forms", icon: "§" },
+  { href: "/audit", label: "Audit log", icon: "⌕" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];
 
@@ -41,12 +44,14 @@ const MOBILE_TABS: NavItem[] = [
 export function AppShell({
   children,
   orgName,
+  orgLogo,
   userEmail,
   isDemo,
   badges,
 }: {
   children: React.ReactNode;
   orgName: string;
+  orgLogo?: string | null;
   userEmail: string;
   isDemo?: boolean;
   badges?: Record<string, number>;
@@ -61,10 +66,20 @@ export function AppShell({
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Desktop top bar (notifications + sign out hook) */}
+      <header className="hidden lg:flex fixed top-0 inset-x-0 z-30 h-12 bg-white border-b border-gray-200 lg:pl-60 px-4 items-center justify-end gap-3">
+        <NotificationsBell />
+      </header>
+
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
+      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200 z-40">
         <div className="px-4 py-5 flex items-center gap-2 font-bold text-lg border-b">
-          <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">S</span>
+          {orgLogo ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={orgLogo} alt="" className="w-8 h-8 rounded-lg object-cover" />
+          ) : (
+            <span className="inline-block w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center">S</span>
+          )}
           <span className="truncate">{orgName}</span>
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -99,20 +114,28 @@ export function AppShell({
       {/* Mobile top bar */}
       <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 font-bold">
-          <span className="inline-block w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">S</span>
+          {orgLogo ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={orgLogo} alt="" className="w-7 h-7 rounded-lg object-cover" />
+          ) : (
+            <span className="inline-block w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">S</span>
+          )}
           <span className="truncate max-w-[180px]">{orgName}</span>
         </div>
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="p-2 -mr-2 text-gray-600"
-          aria-label="Open menu"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationsBell />
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 -mr-2 text-gray-600"
+            aria-label="Open menu"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* Mobile drawer */}
@@ -157,7 +180,7 @@ export function AppShell({
       )}
 
       {/* Main */}
-      <main className="flex-1 lg:ml-60 pb-20 lg:pb-0">
+      <main className="flex-1 lg:ml-60 lg:pt-12 pb-20 lg:pb-0">
         {isDemo && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
             <span>

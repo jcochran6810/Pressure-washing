@@ -1,5 +1,5 @@
-// Process due reminders. Call from an external cron (Vercel cron, GitHub Actions,
-// or supabase scheduled function). Authorize via CRON_SECRET header.
+// Process due reminders. Triggered by Vercel cron (GET) or external scheduler (POST).
+// Authorize via CRON_SECRET bearer header.
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/email";
@@ -7,16 +7,25 @@ import { sendEmail } from "@/lib/email";
 export const runtime = "nodejs";
 
 function adminClient() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    key,
     { cookies: { getAll() { return []; }, setAll() {} } },
   );
 }
 
-export async function POST(request: Request) {
+function authorize(request: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret) return true;
+  const auth = request.headers.get("authorization");
+  if (auth === `Bearer ${secret}`) return true;
+  if (request.headers.get("user-agent")?.includes("vercel-cron")) return true;
+  return false;
+}
+
+async function handler(request: Request) {
+  if (!authorize(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -32,8 +41,8 @@ export async function POST(request: Request) {
   let sent = 0;
   let skipped = 0;
   for (const r of due ?? []) {
-    const c: any = r.customers;
-    const org: any = r.organizations;
+    const c: any = (r as any).customers;
+    const org: any = (r as any).organizations;
     if (!c?.email) { skipped++; continue; }
     const subject =
       r.kind === "appointment" ? `Reminder — appointment with ${org?.name}` :
@@ -57,3 +66,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ processed: due?.length ?? 0, sent, skipped });
 }
+
+export const GET = handler;
+export const POST = handler;

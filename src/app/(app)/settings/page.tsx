@@ -1,11 +1,13 @@
 import { getSessionAndOrg } from "@/lib/org";
-import { updateOrganization, disconnectGoogleDrive } from "./actions";
+import { updateOrganization, disconnectGoogleDrive, uploadLogo, removeLogo } from "./actions";
+import { disconnectStripeConnect } from "./stripe-connect-actions";
+import { MfaEnrollment } from "@/components/mfa-enrollment";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string; msg?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string; msg?: string; stripe_connect?: string; stripe_connect_error?: string }> }) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { google, msg } = await searchParams;
+  const { google, msg, stripe_connect, stripe_connect_error } = await searchParams;
   const { data: drive } = await supabase.from("google_drive_connections").select("*").eq("organization_id", organizationId).maybeSingle();
 
   const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -20,6 +22,34 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {google === "connected" && <Notice tone="ok">Google Drive connected.</Notice>}
       {google === "error" && <Notice tone="error">Google Drive connect failed{msg ? `: ${msg}` : "."}</Notice>}
       {google === "no_refresh_token" && <Notice tone="error">Google didn't return a refresh token. Revoke access in your Google account and try again.</Notice>}
+      {stripe_connect === "active" && <Notice tone="ok">Stripe Connect ready — you can now accept payments directly.</Notice>}
+      {stripe_connect === "pending" && <Notice tone="error">Stripe is still reviewing your account. Try again in a few minutes.</Notice>}
+      {stripe_connect === "onboarding" && <Notice tone="error">Stripe onboarding wasn&apos;t completed. Click Connect to resume.</Notice>}
+      {stripe_connect_error && <Notice tone="error">Stripe Connect error: {stripe_connect_error}</Notice>}
+
+      <section className="card-padded mb-5">
+        <h2 className="font-semibold mb-3">Logo</h2>
+        <div className="flex items-center gap-4">
+          <div className="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 grid place-items-center overflow-hidden">
+            {organization?.logo_url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={organization.logo_url} alt="" className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-3xl text-gray-300">{(organization?.name || "S").charAt(0).toUpperCase()}</span>
+            )}
+          </div>
+          <div className="flex-1">
+            <form action={uploadLogo} encType="multipart/form-data" className="flex flex-wrap gap-2 items-center">
+              <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="text-sm" />
+              <button className="btn-secondary text-sm">Upload</button>
+              {organization?.logo_url && (
+                <button formAction={removeLogo} className="btn-ghost text-red-600 text-xs">Remove</button>
+              )}
+            </form>
+            <p className="text-xs text-gray-500 mt-1">PNG, JPEG, WebP, or SVG. Max 2 MB. Appears on invoices, estimates, and the customer portal.</p>
+          </div>
+        </div>
+      </section>
 
       <section className="card-padded mb-5">
         <h2 className="font-semibold mb-3">Business info</h2>
@@ -73,6 +103,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </section>
 
       <section className="card-padded mb-5">
+        <h2 className="font-semibold mb-3">Security</h2>
+        <MfaEnrollment />
+      </section>
+
+      <section className="card-padded mb-5">
         <h2 className="font-semibold mb-3">Integrations</h2>
         <div className="space-y-3 text-sm">
           <IntegrationRow
@@ -105,6 +140,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             configured={stripeConfigured}
             connected={stripeConfigured}
             setupHint="Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in .env.local."
+          />
+          <StripeConnectRow
+            configured={stripeConfigured}
+            accountId={organization?.stripe_connect_account_id ?? null}
+            status={organization?.stripe_connect_status ?? null}
           />
         </div>
       </section>
@@ -162,4 +202,40 @@ function IntegrationRow({
 function Notice({ tone, children }: { tone: "ok" | "error"; children: React.ReactNode }) {
   const cls = tone === "ok" ? "bg-green-50 text-green-800 border-green-200" : "bg-red-50 text-red-800 border-red-200";
   return <div className={`border rounded-md p-3 text-sm mb-4 ${cls}`}>{children}</div>;
+}
+
+function StripeConnectRow({ configured, accountId, status }: { configured: boolean; accountId: string | null; status: string | null }) {
+  const active = status === "active";
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Stripe Connect (your own payout account)</h3>
+          {active ? (
+            <span className="badge bg-green-100 text-green-700">Active</span>
+          ) : accountId ? (
+            <span className="badge bg-amber-100 text-amber-800">{status ?? "Onboarding"}</span>
+          ) : configured ? (
+            <span className="badge bg-yellow-100 text-yellow-700">Not connected</span>
+          ) : (
+            <span className="badge bg-gray-100 text-gray-700">Stripe not configured</span>
+          )}
+        </div>
+        <p className="text-xs text-gray-600 mt-1">
+          Payments go directly into your own Stripe account (vs. the platform&apos;s). Required for subscription contracts and faster payouts.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        {configured && !active && (
+          <a href="/api/stripe/connect" className="btn-secondary text-xs py-1 px-2">{accountId ? "Resume onboarding" : "Connect"}</a>
+        )}
+        {active && (
+          <>
+            <a href="/api/stripe/connect/dashboard" className="btn-secondary text-xs py-1 px-2">Stripe dashboard ↗</a>
+            <form action={disconnectStripeConnect}><button className="btn-ghost text-red-600 text-xs">Disconnect</button></form>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }

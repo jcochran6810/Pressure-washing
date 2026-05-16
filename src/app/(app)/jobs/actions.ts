@@ -2,6 +2,9 @@
 
 import { getSessionAndOrg } from "@/lib/org";
 import { jobSchema, parseForm } from "@/lib/validation";
+import { logAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
+import { applyJobChemicalUsage } from "./chemical-actions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -49,14 +52,41 @@ export async function createJob(formData: FormData) {
 
 export async function setJobStatus(id: string, status: string) {
   const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: before } = await supabase
+    .from("jobs")
+    .select("title, status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+
   const patch: any = { status };
   if (status === "in_progress") patch.actual_start = new Date().toISOString();
   if (status === "completed") patch.actual_end = new Date().toISOString();
   await supabase.from("jobs").update(patch).eq("id", id).eq("organization_id", organizationId);
 
+  await logAudit({
+    organizationId,
+    action: "update",
+    entityType: "job",
+    entityId: id,
+    entityLabel: before?.title ?? null,
+    before: { status: before?.status },
+    after: { status },
+  });
+
   // When the owner marks a job completed, auto-draft an invoice from the linked
   // estimate (or from the job total) so the next workflow step is one click away.
   if (status === "completed") {
+    await applyJobChemicalUsage(supabase as any, organizationId, id);
+    await notify(supabase as any, {
+      organizationId,
+      kind: "job_completed",
+      title: `Job completed`,
+      body: before?.title ?? null,
+      entityType: "job",
+      entityId: id,
+      url: `/jobs/${id}`,
+    });
     const { data: existing } = await supabase
       .from("invoices")
       .select("id")

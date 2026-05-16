@@ -1,5 +1,5 @@
-// Process due contracts across every org. Auth via CRON_SECRET header.
-// Recommended cadence: daily.
+// Process due contracts across every org. Triggered by Vercel cron (GET) or external (POST).
+// Authorize via CRON_SECRET bearer header.
 
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -8,16 +8,25 @@ import { runDueContracts } from "@/app/(app)/contracts/actions";
 export const runtime = "nodejs";
 
 function adminClient() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    key,
     { cookies: { getAll() { return []; }, setAll() {} } },
   );
 }
 
-export async function POST(request: Request) {
+function authorize(request: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret) return true;
+  const auth = request.headers.get("authorization");
+  if (auth === `Bearer ${secret}`) return true;
+  if (request.headers.get("user-agent")?.includes("vercel-cron")) return true;
+  return false;
+}
+
+async function handler(request: Request) {
+  if (!authorize(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -40,3 +49,6 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ orgs: uniq.length, processed: totalProcessed, errors: allErrors });
 }
+
+export const GET = handler;
+export const POST = handler;

@@ -457,9 +457,114 @@ export type Database = {
         Update: { active?: boolean | null; category?: string | null; created_at?: string | null; default_price?: number | null; description?: string | null; id?: string; name?: string; organization_id?: string; pricing_unit?: string | null };
         Relationships: [];
       };
+      accounting_exports: {
+        Row: { id: string; organization_id: string; kind: string; range_start: string | null; range_end: string | null; row_count: number | null; created_by: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; kind: string; range_start?: string | null; range_end?: string | null; row_count?: number | null; created_by?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; kind?: string; range_start?: string | null; range_end?: string | null; row_count?: number | null; created_by?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      audit_log: {
+        Row: { id: string; organization_id: string; actor_user_id: string | null; actor_email: string | null; action: string; entity_type: string; entity_id: string | null; entity_label: string | null; before_data: Json | null; after_data: Json | null; ip: string | null; user_agent: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; actor_user_id?: string | null; actor_email?: string | null; action: string; entity_type: string; entity_id?: string | null; entity_label?: string | null; before_data?: Json | null; after_data?: Json | null; ip?: string | null; user_agent?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; actor_user_id?: string | null; actor_email?: string | null; action?: string; entity_type?: string; entity_id?: string | null; entity_label?: string | null; before_data?: Json | null; after_data?: Json | null; ip?: string | null; user_agent?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      chemical_recipes: {
+        Row: { id: string; organization_id: string; name: string; description: string | null; components: Json; created_at: string | null };
+        Insert: { id?: string; organization_id: string; name: string; description?: string | null; components?: Json; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; name?: string; description?: string | null; components?: Json; created_at?: string | null };
+        Relationships: [];
+      };
+      contracts: {
+        Row: { id: string; organization_id: string; customer_id: string; property_id: string | null; name: string; status: string; cadence_months: number; preferred_day: number | null; start_date: string; next_run_date: string; end_date: string | null; default_amount: number | null; service_template: Json; auto_create_estimate: boolean | null; auto_create_job: boolean | null; stripe_subscription_id: string | null; notes: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id: string; property_id?: string | null; name: string; status?: string; cadence_months?: number; preferred_day?: number | null; start_date?: string; next_run_date?: string; end_date?: string | null; default_amount?: number | null; service_template?: Json; auto_create_estimate?: boolean | null; auto_create_job?: boolean | null; stripe_subscription_id?: string | null; notes?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string; property_id?: string | null; name?: string; status?: string; cadence_months?: number; preferred_day?: number | null; start_date?: string; next_run_date?: string; end_date?: string | null; default_amount?: number | null; service_template?: Json; auto_create_estimate?: boolean | null; auto_create_job?: boolean | null; stripe_subscription_id?: string | null; notes?: string | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      contract_runs: {
+        Row: { id: string; organization_id: string; contract_id: string; run_date: string; estimate_id: string | null; job_id: string | null; status: string; error: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; contract_id: string; run_date: string; estimate_id?: string | null; job_id?: string | null; status?: string; error?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; contract_id?: string; run_date?: string; estimate_id?: string | null; job_id?: string | null; status?: string; error?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      customer_reminders: {
+        Row: { id: string; organization_id: string; customer_id: string; job_id: string | null; invoice_id: string | null; kind: string; channel: string | null; scheduled_for: string; message: string | null; status: string | null; sent_at: string | null; error: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id: string; job_id?: string | null; invoice_id?: string | null; kind: string; channel?: string | null; scheduled_for: string; message?: string | null; status?: string | null; sent_at?: string | null; error?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string; job_id?: string | null; invoice_id?: string | null; kind?: string; channel?: string | null; scheduled_for?: string; message?: string | null; status?: string | null; sent_at?: string | null; error?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      drafts: {
+        Row: { id: string; organization_id: string; user_id: string; entity_type: string; entity_id: string | null; payload: Json; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; user_id: string; entity_type: string; entity_id?: string | null; payload: Json; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; user_id?: string; entity_type?: string; entity_id?: string | null; payload?: Json; updated_at?: string | null };
+        Relationships: [];
+      };
+      message_templates: {
+        Row: { id: string; organization_id: string; kind: string; channel: string; name: string; subject: string | null; body: string; is_default: boolean | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; kind: string; channel: string; name: string; subject?: string | null; body: string; is_default?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; kind?: string; channel?: string; name?: string; subject?: string | null; body?: string; is_default?: boolean | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      notifications: {
+        Row: { id: string; organization_id: string; user_id: string | null; kind: string; title: string; body: string | null; entity_type: string | null; entity_id: string | null; url: string | null; read_at: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; user_id?: string | null; kind: string; title: string; body?: string | null; entity_type?: string | null; entity_id?: string | null; url?: string | null; read_at?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; user_id?: string | null; kind?: string; title?: string; body?: string | null; entity_type?: string | null; entity_id?: string | null; url?: string | null; read_at?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      photo_annotations: {
+        Row: { id: string; organization_id: string; photo_id: string; shapes: Json; created_by: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; photo_id: string; shapes?: Json; created_by?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; photo_id?: string; shapes?: Json; created_by?: string | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      photo_attachments: {
+        Row: { id: string; organization_id: string; customer_id: string | null; property_id: string | null; job_id: string | null; estimate_id: string | null; invoice_id: string | null; url: string; storage_path: string | null; annotated_url: string | null; kind: string | null; caption: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id?: string | null; property_id?: string | null; job_id?: string | null; estimate_id?: string | null; invoice_id?: string | null; url: string; storage_path?: string | null; annotated_url?: string | null; kind?: string | null; caption?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string | null; property_id?: string | null; job_id?: string | null; estimate_id?: string | null; invoice_id?: string | null; url?: string; storage_path?: string | null; annotated_url?: string | null; kind?: string | null; caption?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      public_galleries: {
+        Row: { id: string; organization_id: string; job_id: string; customer_id: string | null; token: string; title: string | null; is_active: boolean | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; job_id: string; customer_id?: string | null; token: string; title?: string | null; is_active?: boolean | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; job_id?: string; customer_id?: string | null; token?: string; title?: string | null; is_active?: boolean | null; created_at?: string | null };
+        Relationships: [];
+      };
+      qbo_connections: {
+        Row: { organization_id: string; realm_id: string; refresh_token: string; access_token: string | null; access_token_expires_at: string | null; environment: string | null; connected_at: string | null; updated_at: string | null };
+        Insert: { organization_id: string; realm_id: string; refresh_token: string; access_token?: string | null; access_token_expires_at?: string | null; environment?: string | null; connected_at?: string | null; updated_at?: string | null };
+        Update: { organization_id?: string; realm_id?: string; refresh_token?: string; access_token?: string | null; access_token_expires_at?: string | null; environment?: string | null; connected_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      review_feedback: {
+        Row: { id: string; organization_id: string; customer_id: string | null; invoice_id: string | null; token: string; rating: number | null; comments: string | null; submitted_at: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id?: string | null; invoice_id?: string | null; token: string; rating?: number | null; comments?: string | null; submitted_at?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string | null; invoice_id?: string | null; token?: string; rating?: number | null; comments?: string | null; submitted_at?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      sms_log: {
+        Row: { id: string; organization_id: string; customer_id: string | null; to_number: string; from_number: string | null; body: string; provider: string | null; provider_id: string | null; status: string | null; error: string | null; related_kind: string | null; related_id: string | null; sent_at: string | null; created_at: string | null };
+        Insert: { id?: string; organization_id: string; customer_id?: string | null; to_number: string; from_number?: string | null; body: string; provider?: string | null; provider_id?: string | null; status?: string | null; error?: string | null; related_kind?: string | null; related_id?: string | null; sent_at?: string | null; created_at?: string | null };
+        Update: { id?: string; organization_id?: string; customer_id?: string | null; to_number?: string; from_number?: string | null; body?: string; provider?: string | null; provider_id?: string | null; status?: string | null; error?: string | null; related_kind?: string | null; related_id?: string | null; sent_at?: string | null; created_at?: string | null };
+        Relationships: [];
+      };
+      waivers: {
+        Row: { id: string; organization_id: string; name: string; body: string; version: number; active: boolean; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; name: string; body: string; version?: number; active?: boolean; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; name?: string; body?: string; version?: number; active?: boolean; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
+      waiver_signatures: {
+        Row: { id: string; organization_id: string; waiver_id: string; customer_id: string | null; property_id: string | null; job_id: string | null; token: string; signer_name: string | null; signer_email: string | null; signer_phone: string | null; signature_image_url: string | null; signed_text: string | null; status: string; signed_at: string | null; declined_reason: string | null; ip: string | null; user_agent: string | null; created_at: string | null; updated_at: string | null };
+        Insert: { id?: string; organization_id: string; waiver_id: string; customer_id?: string | null; property_id?: string | null; job_id?: string | null; token: string; signer_name?: string | null; signer_email?: string | null; signer_phone?: string | null; signature_image_url?: string | null; signed_text?: string | null; status?: string; signed_at?: string | null; declined_reason?: string | null; ip?: string | null; user_agent?: string | null; created_at?: string | null; updated_at?: string | null };
+        Update: { id?: string; organization_id?: string; waiver_id?: string; customer_id?: string | null; property_id?: string | null; job_id?: string | null; token?: string; signer_name?: string | null; signer_email?: string | null; signer_phone?: string | null; signature_image_url?: string | null; signed_text?: string | null; status?: string; signed_at?: string | null; declined_reason?: string | null; ip?: string | null; user_agent?: string | null; created_at?: string | null; updated_at?: string | null };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { is_org_member: { Args: { org_id: string }; Returns: boolean } };
+    Functions: {
+      is_org_member: { Args: { org_id: string }; Returns: boolean };
+      accept_estimate_by_token: { Args: { p_token: string; p_signer?: string }; Returns: string };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };
