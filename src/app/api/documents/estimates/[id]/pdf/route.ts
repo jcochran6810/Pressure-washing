@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     estimateNumber: est.estimate_number,
     issueDate: est.issue_date,
     expiresAt: est.expires_at,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
+    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
     subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
     tax: Number(est.tax_amount), total: Number(est.total),
     notes: est.notes, terms: est.terms,

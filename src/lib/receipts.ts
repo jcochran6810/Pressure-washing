@@ -77,6 +77,24 @@ export async function sendInvoiceReceiptEmail(args: Args): Promise<{ ok: boolean
     replyTo: org?.email ?? undefined,
   });
 
+  // Fully paid → archive every line-item photo and job before/after photo
+  // to the org's Google Drive. Best-effort, fails silently.
+  if (fullyPaid) {
+    try {
+      const photos = await collectInvoicePhotos(args.supabase as any, args.invoice.id);
+      if (photos.length > 0) {
+        const { archiveInvoicePhotosToDrive } = await import("@/lib/drive-uploader");
+        await archiveInvoicePhotosToDrive({
+          organization_id: args.organizationId,
+          invoice_number: args.invoice.invoice_number,
+          photoUrls: photos,
+        });
+      }
+    } catch (e) {
+      console.error("archive on payment failed:", e);
+    }
+  }
+
   // Log every attempt (success OR failure) so the workflow banner clears
   // and the admin send log shows the outcome.
   await (args.supabase as any).from("receipt_log").insert({
@@ -91,4 +109,41 @@ export async function sendInvoiceReceiptEmail(args: Args): Promise<{ ok: boolean
   });
 
   return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+}
+
+// Collect every URL we should back up to Drive for a paid invoice:
+//   * line-item photo_urls on the invoice's own line items
+//   * line-item photo_urls on the source estimate's line items (if any)
+//   * the linked job's before_photos / after_photos arrays
+async function collectInvoicePhotos(supabase: any, invoice_id: string): Promise<string[]> {
+  const out = new Set<string>();
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("id, estimate_id, job_id, invoice_line_items(photo_urls)")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (!inv) return [];
+  for (const li of (inv.invoice_line_items as any[]) ?? []) {
+    for (const u of (li.photo_urls as string[]) ?? []) if (u) out.add(u);
+  }
+  if (inv.estimate_id) {
+    const { data: est } = await supabase
+      .from("estimates")
+      .select("estimate_line_items(photo_urls)")
+      .eq("id", inv.estimate_id)
+      .maybeSingle();
+    for (const li of (est?.estimate_line_items as any[]) ?? []) {
+      for (const u of (li.photo_urls as string[]) ?? []) if (u) out.add(u);
+    }
+  }
+  if (inv.job_id) {
+    const { data: job } = await supabase
+      .from("jobs")
+      .select("before_photos, after_photos")
+      .eq("id", inv.job_id)
+      .maybeSingle();
+    for (const u of ((job?.before_photos as string[]) ?? [])) if (u) out.add(u);
+    for (const u of ((job?.after_photos as string[]) ?? [])) if (u) out.add(u);
+  }
+  return Array.from(out);
 }

@@ -33,11 +33,8 @@ function parseLineItems(formData: FormData): LineItem[] {
 }
 
 async function nextInvoiceNumber(orgId: string, supabase: any) {
-  const { data: org } = await supabase.from("organizations").select("next_invoice_number, invoice_prefix").eq("id", orgId).single();
-  const num = org?.next_invoice_number ?? 1000;
-  const prefix = org?.invoice_prefix ?? "INV";
-  await supabase.from("organizations").update({ next_invoice_number: num + 1 }).eq("id", orgId);
-  return `${prefix}-${num}`;
+  const { nextDocumentNumber } = await import("@/lib/numbering");
+  return nextDocumentNumber(supabase, orgId);
 }
 
 export async function createInvoice(formData: FormData) {
@@ -270,7 +267,7 @@ export async function saveInvoiceToDrive(id: string) {
     invoiceNumber: inv.invoice_number,
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
+    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
     subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
     tax: Number(inv.tax_amount), total: Number(inv.total),
     amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
@@ -317,7 +314,7 @@ export async function emailInvoiceToCustomer(id: string) {
     invoiceNumber: fresh.invoice_number,
     issueDate: fresh.issue_date,
     dueDate: fresh.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
+    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
     subtotal: Number(fresh.subtotal), discount: Number(fresh.discount_amount), taxRate: Number(fresh.tax_rate),
     tax: Number(fresh.tax_amount), total: Number(fresh.total),
     amountPaid: Number(fresh.amount_paid), balanceDue: Number(fresh.balance_due),

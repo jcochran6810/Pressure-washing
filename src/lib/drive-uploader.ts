@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { refreshAccessToken, uploadFile } from "@/lib/google-drive";
+import { refreshAccessToken, uploadFile, ensureFolder } from "@/lib/google-drive";
 
 export async function getDriveAccessToken(organization_id: string) {
   const supabase = await createClient();
@@ -40,4 +40,48 @@ export async function uploadHtmlToDrive(opts: {
     mimeType: "text/html",
     body: opts.html,
   });
+}
+
+// Archive every line-item photo + job before/after photo to the org's Drive
+// under "Job Photos/<invoice_number>/...". Best-effort: any failure is
+// logged but doesn't break the payment flow.
+export async function archiveInvoicePhotosToDrive(opts: {
+  organization_id: string;
+  invoice_number: string;
+  photoUrls: string[];
+}): Promise<{ uploaded: number; skipped: number }> {
+  const result = { uploaded: 0, skipped: 0 };
+  if (!opts.photoUrls.length) return result;
+  const t = await getDriveAccessToken(opts.organization_id);
+  if (!t) return result; // No Drive connected — skip silently
+  const photosFolder = (t.conn as any).photos_folder_id as string | undefined;
+  if (!photosFolder) return result;
+
+  // Sub-folder per invoice so it's easy to find every artifact for one job.
+  const invoiceFolder = await ensureFolder(t.token, opts.invoice_number, photosFolder);
+
+  let i = 0;
+  for (const url of opts.photoUrls) {
+    if (!url) { result.skipped++; continue; }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) { result.skipped++; continue; }
+      const blob = await res.blob();
+      const contentType = res.headers.get("content-type") || "image/jpeg";
+      const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+      i++;
+      await uploadFile({
+        access_token: t.token,
+        parentFolderId: invoiceFolder,
+        name: `${String(i).padStart(3, "0")}.${ext}`,
+        mimeType: contentType,
+        body: blob,
+      });
+      result.uploaded++;
+    } catch (e) {
+      console.error("archiveInvoicePhotosToDrive failed for url:", url, e);
+      result.skipped++;
+    }
+  }
+  return result;
 }

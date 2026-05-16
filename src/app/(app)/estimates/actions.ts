@@ -11,11 +11,10 @@ import { redirect } from "next/navigation";
 type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
 
 async function nextNumber(prefix: string, orgId: string, supabase: any, field: "next_estimate_number" | "next_invoice_number") {
-  const { data: org } = await supabase.from("organizations").select(`${field}, ${field === "next_estimate_number" ? "estimate_prefix" : "invoice_prefix"}`).eq("id", orgId).single();
-  const current = org?.[field] ?? 1000;
-  const p = prefix || org?.[field === "next_estimate_number" ? "estimate_prefix" : "invoice_prefix"] || (field === "next_estimate_number" ? "EST" : "INV");
-  await supabase.from("organizations").update({ [field]: current + 1 }).eq("id", orgId);
-  return `${p}-${current}`;
+  // Both fields share the same counter going forward (see src/lib/numbering.ts).
+  // We keep the parameter for back-compat with existing call sites.
+  const { nextDocumentNumber } = await import("@/lib/numbering");
+  return nextDocumentNumber(supabase, orgId);
 }
 
 function parseLineItems(formData: FormData): LineItem[] {
@@ -152,6 +151,7 @@ async function ensureJobForEstimate(estimateId: string, jobStatus: "scheduled" |
     customer_id: est.customer_id,
     property_id: est.property_id,
     estimate_id: estimateId,
+    job_number: est.estimate_number, // Same number flows through estimate → job → invoice → receipt
     title: `Job from ${est.estimate_number}`,
     description: est.notes,
     status: jobStatus,
@@ -176,7 +176,9 @@ export async function convertEstimateToInvoice(estimateId: string) {
     .single();
   if (!est) throw new Error("Estimate not found");
 
-  const invoice_number = await nextNumber("INV", organizationId, supabase, "next_invoice_number");
+  // Same number flows through the chain — invoice inherits the estimate's
+  // number rather than allocating a fresh one.
+  const invoice_number = est.estimate_number;
   const due_date = new Date();
   due_date.setDate(due_date.getDate() + 14);
 
@@ -249,7 +251,7 @@ function estimateDocHtml(organization: any, est: any) {
     estimateNumber: est.estimate_number,
     issueDate: est.issue_date,
     expiresAt: est.expires_at,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
+    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
     subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
     tax: Number(est.tax_amount), total: Number(est.total),
     notes: est.notes, terms: est.terms,

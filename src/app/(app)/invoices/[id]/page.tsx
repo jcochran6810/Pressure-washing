@@ -6,6 +6,7 @@ import { pushInvoiceToQboAction } from "@/app/(app)/accounting/actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
+import { workflowLabel } from "@/lib/numbering";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       <Link href="/invoices" className="text-sm text-brand-600 hover:underline">← Invoices</Link>
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-5">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{inv.invoice_number}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">{workflowLabel(inv.invoice_number, {
+            hasJob: !!workflow.jobId,
+            hasInvoice: true,
+            invoicePaid: workflow.invoicePaid,
+            receiptSent: workflow.receiptSent,
+          })}</h1>
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">

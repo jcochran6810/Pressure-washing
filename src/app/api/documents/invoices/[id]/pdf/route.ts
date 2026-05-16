@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     invoiceNumber: inv.invoice_number,
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total) })),
+    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
     subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
     tax: Number(inv.tax_amount), total: Number(inv.total),
     amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),

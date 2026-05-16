@@ -71,7 +71,6 @@ export async function setJobStatus(id: string, status: string) {
         .eq("organization_id", organizationId)
         .single();
       if (job) {
-        const invoice_number = await nextInvoiceNumber(supabase, organizationId);
         const due = new Date(); due.setDate(due.getDate() + 14);
 
         if (job.estimate_id) {
@@ -81,6 +80,8 @@ export async function setJobStatus(id: string, status: string) {
             .eq("id", job.estimate_id)
             .single();
           if (est) {
+            // Reuse the estimate's number end-to-end through the chain.
+            const invoice_number = est.estimate_number;
             const { data: inv } = await supabase
               .from("invoices")
               .insert({
@@ -118,6 +119,8 @@ export async function setJobStatus(id: string, status: string) {
             }
           }
         } else {
+          // Standalone job (no estimate parent) — allocate a fresh number.
+          const invoice_number = await nextInvoiceNumber(supabase, organizationId);
           const amount = Number(job.total_amount ?? 0);
           const { data: inv } = await supabase
             .from("invoices")
@@ -156,15 +159,8 @@ export async function setJobStatus(id: string, status: string) {
 }
 
 async function nextInvoiceNumber(supabase: any, organizationId: string) {
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("next_invoice_number, invoice_prefix")
-    .eq("id", organizationId)
-    .single();
-  const num = org?.next_invoice_number ?? 1000;
-  const prefix = org?.invoice_prefix ?? "INV";
-  await supabase.from("organizations").update({ next_invoice_number: num + 1 }).eq("id", organizationId);
-  return `${prefix}-${num}`;
+  const { nextDocumentNumber } = await import("@/lib/numbering");
+  return nextDocumentNumber(supabase, organizationId);
 }
 
 export type DaySchedule = {

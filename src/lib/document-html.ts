@@ -2,7 +2,7 @@ import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 
 type Org = { name: string; email?: string | null; phone?: string | null; website?: string | null; address_line1?: string | null; city?: string | null; state?: string | null; postal_code?: string | null; logo_url?: string | null };
 type Customer = { first_name?: string | null; last_name?: string | null; company_name?: string | null; email?: string | null; phone?: string | null };
-type LineItem = { description: string; quantity: number; unit_price: number; total: number };
+type LineItem = { description: string; quantity: number; unit_price: number; total: number; photo_urls?: string[] | null };
 
 function header(org: Org) {
   const logo = org.logo_url
@@ -49,13 +49,23 @@ function lineTable(items: LineItem[], totals: { subtotal: number; discount?: num
         </tr>
       </thead>
       <tbody>
-        ${items.map((li) => `
+        ${items.map((li) => {
+          const photos = (li.photo_urls ?? []).filter(Boolean);
+          const photoRow = photos.length
+            ? `<tr><td colspan="4" style="padding:4px 8px 12px;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                  ${photos.map((u) => `<img src="${escapeHtml(u)}" alt="" style="width:96px;height:96px;object-fit:cover;border:1px solid #e2e8f0;border-radius:6px;" />`).join("")}
+                </div>
+              </td></tr>`
+            : "";
+          return `
           <tr>
             <td style="padding:8px;border-bottom:1px solid #f1f5f9;">${escapeHtml(li.description)}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${li.quantity}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${formatCurrency(li.unit_price, currency)}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:600;">${formatCurrency(li.total, currency)}</td>
-          </tr>`).join("")}
+          </tr>${photoRow}`;
+        }).join("")}
         <tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Subtotal</td><td style="text-align:right;padding:6px 8px;">${formatCurrency(totals.subtotal, currency)}</td></tr>
         ${totals.discount && totals.discount > 0 ? `<tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Discount</td><td style="text-align:right;padding:6px 8px;">− ${formatCurrency(totals.discount, currency)}</td></tr>` : ""}
         <tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Tax (${((totals.taxRate ?? 0) * 100).toFixed(2)}%)</td><td style="text-align:right;padding:6px 8px;">${formatCurrency(totals.tax ?? 0, currency)}</td></tr>
