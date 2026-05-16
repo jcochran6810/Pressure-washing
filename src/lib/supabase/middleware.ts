@@ -47,6 +47,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/review/") ||
     path.startsWith("/waiver/") ||
     path.startsWith("/portal") ||
+    path.startsWith("/legal") ||
     path.startsWith("/api/stripe/") ||
     path.startsWith("/api/portal/") ||
     path.startsWith("/api/cron/");

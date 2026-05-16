@@ -14,11 +14,16 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setInfo(null);
+    if (!acceptedTerms) {
+      setError("Please accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
     setLoading(true);
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
@@ -68,6 +73,20 @@ export default function SignupPage() {
               <label>Password</label>
               <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full" />
             </div>
+            <label className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I agree to the{" "}
+                <Link href="/legal/terms" target="_blank" className="text-brand-600 underline">Terms of Service</Link>{" "}
+                and{" "}
+                <Link href="/legal/privacy" target="_blank" className="text-brand-600 underline">Privacy Policy</Link>.
+              </span>
+            </label>
             {error && <p className="text-sm text-red-600">{error}</p>}
             {info && <p className="text-sm text-green-700">{info}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full">

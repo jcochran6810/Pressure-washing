@@ -46,6 +46,21 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      <footer className="border-t border-gray-200 mt-12 py-8">
+        <div className="mx-auto max-w-6xl px-4 flex flex-wrap justify-between gap-4 text-xs text-gray-500">
+          <span>© {new Date().getFullYear()} Suds. All rights reserved.</span>
+          <nav className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href="/legal/terms" className="hover:text-gray-900">Terms</Link>
+            <Link href="/legal/privacy" className="hover:text-gray-900">Privacy</Link>
+            <Link href="/legal/dpa" className="hover:text-gray-900">DPA</Link>
+            <Link href="/legal/subprocessors" className="hover:text-gray-900">Subprocessors</Link>
+            <Link href="/legal/sms-consent" className="hover:text-gray-900">SMS Policy</Link>
+            <Link href="/legal/refund" className="hover:text-gray-900">Refunds</Link>
+            <Link href="/legal/acceptable-use" className="hover:text-gray-900">Acceptable Use</Link>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }
