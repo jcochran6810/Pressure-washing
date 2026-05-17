@@ -8,7 +8,7 @@ import { AutoSave } from "@/components/auto-save";
 export const dynamic = "force-dynamic";
 
 export default async function NewEstimatePage({ searchParams }: { searchParams: Promise<{ customer?: string }> }) {
-  const { supabase, organizationId } = await getSessionAndOrg();
+  const { supabase, organizationId, user, profile } = await getSessionAndOrg();
   const { customer } = await searchParams;
 
   const [{ data: customers }, { data: services }] = await Promise.all([
@@ -19,6 +19,7 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
   const today = new Date().toISOString().slice(0, 10);
   const expiry = new Date();
   expiry.setDate(expiry.getDate() + 30);
+  const defaultPreparedBy = (profile as any)?.full_name || user.email || "";
 
   return (
     <div className="max-w-3xl">
@@ -46,6 +47,10 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
           <div>
             <label>Buffer (min) — internal only</label>
             <input name="buffer_minutes" type="number" min="0" defaultValue={30} className="w-full" />
+          </div>
+          <div className="sm:col-span-2">
+            <label>Estimate prepared by</label>
+            <input name="prepared_by" defaultValue={defaultPreparedBy} className="w-full" placeholder="Your name (visible to the customer)" />
           </div>
         </div>
 

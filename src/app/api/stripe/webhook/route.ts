@@ -14,19 +14,35 @@ async function handlePlatformEvent(event: Stripe.Event, supabase: any) {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.metadata?.saas_subscription !== "1") return;
     const orgId = session.metadata?.organization_id;
+    const planSlug = session.metadata?.plan_slug;
     if (!orgId || !session.subscription) return;
     const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
-    await supabase.from("organizations").update({
-      subscription_status: "active",
+
+    // Fetch the subscription to determine status — trialing vs active
+    const stripe = getStripe();
+    let status: "active" | "trialing" = "active";
+    if (stripe) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(subId);
+        status = sub.status === "trialing" ? "trialing" : "active";
+      } catch {}
+    }
+
+    const update: any = {
+      subscription_status: status,
       subscription_stripe_id: subId,
       past_due_since: null,
       past_due_notified_at: null,
-    }).eq("id", orgId);
+    };
+    if (planSlug) update.subscription_plan = planSlug;
+    await supabase.from("organizations").update(update).eq("id", orgId);
     await supabase.from("notifications").insert({
       organization_id: orgId,
       kind: "system",
-      title: "Subscription active",
-      body: "Thanks for subscribing — full access is unlocked.",
+      title: status === "trialing" ? "Trial started — card on file" : "Subscription active",
+      body: status === "trialing"
+        ? "Your card will be charged when the 14-day trial ends. Cancel any time in Billing."
+        : "Thanks for subscribing — full access is unlocked.",
       url: "/billing",
     });
   }

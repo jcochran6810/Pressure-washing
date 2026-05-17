@@ -108,6 +108,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </section>
 
       <section className="card-padded mb-5">
+        <h2 className="font-semibold mb-3">Document customization</h2>
+        <p className="text-sm text-gray-600 mb-3">
+          Choose which fields appear on the documents your customers see —
+          estimates, invoices, and receipts. Available on Plus and Pro plans.
+        </p>
+        <a href="/settings/document-fields" className="btn-secondary text-sm">Open customization</a>
+      </section>
+
+      <section className="card-padded mb-5">
         <h2 className="font-semibold mb-3">Integrations</h2>
         <div className="space-y-3 text-sm">
           <IntegrationRow

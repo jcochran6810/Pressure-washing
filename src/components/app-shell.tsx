@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/waivers", label: "Waivers", icon: "✍" },
   { href: "/tax", label: "Tax forms", icon: "§" },
   { href: "/audit", label: "Audit log", icon: "⌕" },
+  { href: "/team", label: "Team", icon: "♛" },
   { href: "/billing", label: "Billing", icon: "♢" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];

@@ -16,22 +16,36 @@ import { revalidatePath } from "next/cache";
 // =====================================================================
 const FALLBACK_AMOUNT_USD = 49; // $49/mo if you haven't set the env var
 
-async function getSubscriptionPriceId(stripe: any): Promise<string> {
-  if (process.env.STRIPE_SUBSCRIPTION_PRICE_ID) {
-    return process.env.STRIPE_SUBSCRIPTION_PRICE_ID;
-  }
-  // Lazy create a product + price the first time. Production should set the env var.
+// Resolve the Stripe price ID for the given plan slug. Order of precedence:
+//  1. subscription_plans.stripe_price_id_monthly column (admin set in /admin/plans)
+//  2. STRIPE_SUBSCRIPTION_PRICE_ID env var (legacy)
+//  3. lazily create a product+price using the slug's stored amount
+async function getSubscriptionPriceId(stripe: any, supabase: any, slug: string): Promise<{ priceId: string; planName: string }> {
+  const { data: plan } = await supabase
+    .from("subscription_plans")
+    .select("name, monthly_amount, stripe_price_id_monthly")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (plan?.stripe_price_id_monthly) return { priceId: plan.stripe_price_id_monthly, planName: plan.name };
+  if (process.env.STRIPE_SUBSCRIPTION_PRICE_ID) return { priceId: process.env.STRIPE_SUBSCRIPTION_PRICE_ID, planName: plan?.name ?? "Starter" };
+
+  const amount = Number(plan?.monthly_amount ?? FALLBACK_AMOUNT_USD);
   const product = await stripe.products.create({
-    name: "Suds — Pressure Washing Business Manager",
+    name: `Suds — ${plan?.name ?? "Starter"}`,
     description: "Monthly subscription",
   });
   const price = await stripe.prices.create({
     product: product.id,
     currency: "usd",
-    unit_amount: FALLBACK_AMOUNT_USD * 100,
+    unit_amount: Math.round(amount * 100),
     recurring: { interval: "month" },
   });
-  return price.id;
+  // Cache the created price ID on the plan row so we don't keep making products.
+  if (plan) {
+    await supabase.from("subscription_plans").update({ stripe_price_id_monthly: price.id }).eq("slug", slug);
+  }
+  return { priceId: price.id, planName: plan?.name ?? "Starter" };
 }
 
 // =====================================================================
@@ -39,13 +53,14 @@ async function getSubscriptionPriceId(stripe: any): Promise<string> {
 // session in subscription mode. The webhook records the subscription
 // ID when checkout completes.
 // =====================================================================
-export async function startSubscription() {
+export async function startSubscription(planSlug?: string) {
   const { supabase, organizationId, organization, user } = await getSessionAndOrg();
   const stripe = getStripe();
   if (!stripe) throw new Error("Stripe not configured.");
   if (!user.email) throw new Error("Your account has no email address.");
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const slug = planSlug || (organization as any)?.subscription_plan || "starter";
 
   // Reuse the Stripe customer if we already have one (e.g. resubscribing
   // after cancellation).
@@ -62,37 +77,57 @@ export async function startSubscription() {
     }).eq("id", organizationId);
   }
 
-  const priceId = await getSubscriptionPriceId(stripe);
+  const { priceId, planName } = await getSubscriptionPriceId(stripe, supabase, slug);
+
+  // Card required at signup. We still want the 14-day trial — Stripe gives us
+  // both via trial_period_days + the payment_method_collection requirement.
+  // The customer's card is held but not charged until the trial ends; on day 14
+  // Stripe auto-charges and the monthly billing day = trial-end day.
+  const remainingTrialDays = computeRemainingTrialDays((organization as any)?.trial_ends_at, (organization as any)?.subscription_status);
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
+    payment_method_collection: "always", // require card upfront
     success_url: `${appUrl}/billing?subscription=ok`,
     cancel_url: `${appUrl}/billing?subscription=cancelled`,
     metadata: {
       saas_subscription: "1",
       organization_id: organizationId,
+      plan_slug: slug,
     },
     subscription_data: {
+      trial_period_days: remainingTrialDays > 0 ? remainingTrialDays : undefined,
       metadata: {
         saas_subscription: "1",
         organization_id: organizationId,
+        plan_slug: slug,
       },
     },
-    // Don't allow promotion codes here unless you want to; uncomment to enable.
-    // allow_promotion_codes: true,
   });
+
+  // Store which plan they're on (will be confirmed by the webhook)
+  await supabase.from("organizations").update({ subscription_plan: slug }).eq("id", organizationId);
 
   await logAudit({
     organizationId,
     action: "create",
     entityType: "subscription",
-    entityLabel: "Started SaaS checkout",
-    after: { checkout_session_id: session.id },
+    entityLabel: `Started checkout for ${planName}`,
+    after: { checkout_session_id: session.id, plan_slug: slug },
   });
 
   return { checkoutUrl: session.url };
+}
+
+// Compute remaining days of trial. Used so existing trial users who only just
+// add a card aren't given a fresh 14 days on top of what they already used.
+function computeRemainingTrialDays(trialEndsAt: string | null, status: string | null): number {
+  if (status !== "trialing" || !trialEndsAt) return 0;
+  const ms = new Date(trialEndsAt).getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
 // =====================================================================

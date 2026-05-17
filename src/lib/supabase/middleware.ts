@@ -48,6 +48,10 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/waiver/") ||
     path.startsWith("/portal") ||
     path.startsWith("/legal") ||
+    path.startsWith("/invite/") ||
+    path.startsWith("/help") ||
+    path.startsWith("/pricing") ||
+    path.startsWith("/changelog") ||
     path.startsWith("/api/stripe/") ||
     path.startsWith("/api/portal/") ||
     path.startsWith("/api/cron/");

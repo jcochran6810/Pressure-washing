@@ -25,6 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
     tax: Number(est.tax_amount), total: Number(est.total),
     notes: est.notes, terms: est.terms,
+    preparedBy: (est as any).prepared_by ?? null,
+    depositAmount: (est as any).deposit_amount ? Number((est as any).deposit_amount) : null,
     currency: organization?.currency,
   });
   return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });

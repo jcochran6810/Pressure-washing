@@ -40,10 +40,12 @@ export default function SignupPage() {
       return;
     }
     if (data.session) {
-      router.push("/dashboard");
+      // Next step: pick a plan and capture card. /onboarding/payment is a
+      // gate that all new signups pass through before reaching the app.
+      router.push("/onboarding/payment");
       router.refresh();
     } else {
-      setInfo("Check your email to confirm your account.");
+      setInfo("Check your email to confirm your account. You'll be asked to enter payment details next.");
     }
   }
 

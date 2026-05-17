@@ -88,6 +88,9 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
             Deposit on approval: <strong>{formatCurrency(Number(est.deposit_amount))}</strong>
           </p>
         )}
+        {est.prepared_by && (
+          <p className="mt-1 text-xs text-gray-500">Prepared by {est.prepared_by}</p>
+        )}
         {est.duration_minutes && (
           <p className="mt-1 text-xs text-gray-500">
             Internal: estimated {est.duration_minutes}m{est.buffer_minutes ? ` + ${est.buffer_minutes}m buffer` : ""}

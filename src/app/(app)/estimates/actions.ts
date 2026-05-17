@@ -60,6 +60,7 @@ export async function createEstimate(formData: FormData) {
   const terms = validated.terms ?? null;
   const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
+  const prepared_by = String(formData.get("prepared_by") || "").trim() || null;
   const items = parseLineItems(formData);
 
   let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
@@ -90,7 +91,7 @@ export async function createEstimate(formData: FormData) {
       organization_id: organizationId, customer_id, property_id, estimate_number,
       issue_date, expires_at, tax_rate, discount_amount, tax_amount, subtotal, total,
       notes, terms, status: "draft",
-      duration_minutes, buffer_minutes, deposit_amount, approval_token,
+      duration_minutes, buffer_minutes, deposit_amount, approval_token, prepared_by,
     })
     .select("id")
     .single();
@@ -292,6 +293,8 @@ function estimateDocHtml(organization: any, est: any) {
     subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
     tax: Number(est.tax_amount), total: Number(est.total),
     notes: est.notes, terms: est.terms,
+    preparedBy: est.prepared_by ?? null,
+    depositAmount: est.deposit_amount ? Number(est.deposit_amount) : null,
     currency: organization?.currency,
   });
 }
@@ -374,6 +377,7 @@ export async function updateEstimate(id: string, formData: FormData) {
   const discount_amount = validated.discount_amount ?? 0;
   const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
+  const prepared_by = String(formData.get("prepared_by") || "").trim() || null;
   const items = parseLineItems(formData);
   const notes = validated.notes ?? null;
   const terms = validated.terms ?? null;
@@ -393,7 +397,7 @@ export async function updateEstimate(id: string, formData: FormData) {
     issue_date, expires_at,
     tax_rate, discount_amount, tax_amount, subtotal, total,
     duration_minutes, buffer_minutes, deposit_amount,
-    notes, terms,
+    notes, terms, prepared_by,
     updated_at: new Date().toISOString(),
   }).eq("id", id).eq("organization_id", organizationId);
 

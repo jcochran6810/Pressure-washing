@@ -74,6 +74,10 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
             <input name="buffer_minutes" type="number" min="0" defaultValue={est.buffer_minutes ?? 30} className="w-full" />
           </div>
           <div className="sm:col-span-2">
+            <label>Estimate prepared by</label>
+            <input name="prepared_by" defaultValue={est.prepared_by ?? ""} className="w-full" placeholder="Your name (visible to the customer)" />
+          </div>
+          <div className="sm:col-span-2">
             <input type="hidden" name="customer_id" value={est.customer_id ?? ""} />
             {est.property_id && <input type="hidden" name="property_id" value={est.property_id} />}
           </div>
