@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { BRAND } from "@/lib/brand";
+import { CookieConsent } from "@/components/cookie-consent";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Suds — Pressure Washing Business Manager",
-  description: "All-in-one CRM, estimating, scheduling, invoicing, accounting, and inventory for pressure washing companies.",
+  title: `${BRAND.name} — ${BRAND.tagline}`,
+  description: BRAND.description,
 };
 
 export const viewport: Viewport = {
@@ -15,7 +17,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <CookieConsent />
+      </body>
     </html>
   );
 }

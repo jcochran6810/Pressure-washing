@@ -4,7 +4,14 @@ import { getSessionAndOrg } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 
 export async function seedDemoData() {
-  const { supabase, organizationId } = await getSessionAndOrg();
+  const { supabase, organizationId, user } = await getSessionAndOrg();
+
+  // Only seed on anonymous demo accounts — never on a real org. Prevents an
+  // authenticated real user from triggering this and overwriting their org's
+  // name/email/tax_rate with demo values.
+  if (!(user as any).is_anonymous) {
+    return { skipped: true, reason: "not_anonymous" };
+  }
 
   // Idempotent — bail if already seeded
   const { count } = await supabase

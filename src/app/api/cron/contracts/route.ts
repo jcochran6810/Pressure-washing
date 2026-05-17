@@ -18,11 +18,10 @@ function adminClient() {
 
 function authorize(request: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
+  // Fail closed: if no secret is set, deny.
+  if (!secret) return false;
   const auth = request.headers.get("authorization");
-  if (auth === `Bearer ${secret}`) return true;
-  if (request.headers.get("user-agent")?.includes("vercel-cron")) return true;
-  return false;
+  return auth === `Bearer ${secret}`;
 }
 
 async function handler(request: Request) {

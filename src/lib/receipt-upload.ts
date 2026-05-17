@@ -14,14 +14,17 @@ export async function uploadReceipt(
 ): Promise<string | null> {
   if (!file || file.size === 0) return null;
 
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  // Sanitize extension to only a-z 0-9 (no path traversal, no shell chars)
+  const rawExt = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const ext = rawExt.replace(/[^a-z0-9]/g, "").slice(0, 8) || "jpg";
   const date = new Date().toISOString().slice(0, 10);
   const slug = (vendorHint || "receipt")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40) || "receipt";
-  const filename = `${date}-${slug}-${Date.now()}.${ext}`;
+  // Filename is fully server-controlled — no user input is interpolated as-is
+  const filename = `${date}-${slug}-${Date.now()}-${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 8)}.${ext}`;
   const mimeType = file.type || (ext === "pdf" ? "application/pdf" : "image/jpeg");
 
   // Try Google Drive

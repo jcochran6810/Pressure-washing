@@ -1,27 +1,29 @@
-import { notFound } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
+import { BRAND } from "@/lib/brand";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { approveQuote, declineQuote } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// Public quote page — no auth. RLS is bypassed by reading via a token-scoped service call.
-function publicClient() {
+// Public quote page — no auth. RLS allows reads only when the request carries
+// the matching x-quote-token header, so a stolen anon key alone can't enumerate.
+function publicClient(token: string) {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll() { return []; }, setAll() {} } },
+    {
+      cookies: { getAll() { return []; }, setAll() {} },
+      global: { headers: { "x-quote-token": token } },
+    },
   );
 }
 
 export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const supabase = publicClient();
-  // Note: public reads require either RLS-public-policy or a server-side bypass. For now we
-  // read via the anon key which won't bypass RLS. To make this work in production, run a
-  // migration that creates a token-based public select policy, or store quotes in a separate
-  // public view. For now this page works if the org adds:
-  //   create policy "public quote read" on estimates for select using (approval_token is not null);
+  if (!token || token.length < 16) {
+    return <NotFound />;
+  }
+  const supabase = publicClient(token);
   const { data: est } = await supabase
     .from("estimates")
     .select("*, customers(*), organizations(*), estimate_line_items(*)")
@@ -29,14 +31,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
     .maybeSingle();
 
   if (!est) {
-    return (
-      <main className="min-h-screen grid place-items-center p-6 bg-gray-50">
-        <div className="card-padded max-w-md text-center">
-          <h1 className="text-xl font-bold">Quote unavailable</h1>
-          <p className="text-gray-600 mt-2">The link may have expired or been revoked. Please contact us.</p>
-        </div>
-      </main>
-    );
+    return <NotFound />;
   }
 
   const expired = est.expires_at && new Date(est.expires_at) < new Date();
@@ -123,7 +118,18 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
           </div>
         )}
 
-        <p className="text-center text-xs text-gray-400 mt-6">Powered by Suds</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Powered by {BRAND.name}</p>
+      </div>
+    </main>
+  );
+}
+
+function NotFound() {
+  return (
+    <main className="min-h-screen grid place-items-center p-6 bg-gray-50">
+      <div className="card-padded max-w-md text-center">
+        <h1 className="text-xl font-bold">Quote unavailable</h1>
+        <p className="text-gray-600 mt-2">The link may have expired or been revoked. Please contact us.</p>
       </div>
     </main>
   );

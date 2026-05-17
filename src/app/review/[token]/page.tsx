@@ -3,20 +3,30 @@ import { submitReview } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-function publicClient() {
+function publicClient(token: string) {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll() { return []; }, setAll() {} } },
+    {
+      cookies: { getAll() { return []; }, setAll() {} },
+      global: { headers: { "x-review-token": token } },
+    },
   );
 }
 
 export default async function ReviewPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const supabase = publicClient();
+  if (!token || token.length < 16) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-gray-50">
+        <p className="text-sm text-gray-600">Link not found.</p>
+      </main>
+    );
+  }
+  const supabase = publicClient(token);
   const { data: feedback } = await supabase
     .from("review_feedback")
-    .select("*, organizations(name, google_review_url)")
+    .select("id, rating, submitted_at, organizations(name, google_review_url)")
     .eq("token", token)
     .maybeSingle();
 
@@ -30,7 +40,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ token: 
 
   const submit = submitReview.bind(null, token);
 
-  if (feedback.responded_at) {
+  if (feedback.submitted_at) {
     return (
       <main className="min-h-screen grid place-items-center bg-gray-50 p-4">
         <div className="card-padded text-center">

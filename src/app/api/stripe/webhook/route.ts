@@ -172,6 +172,16 @@ export async function POST(request: Request) {
 
   const supabase = adminClient();
 
+  // Idempotency: Stripe retries on any non-2xx; we may also see the same event
+  // twice from independent webhook endpoints. Reject duplicates by event ID.
+  const { error: idErr } = await (supabase as any)
+    .from("stripe_event_log")
+    .insert({ event_id: event.id, type: event.type, account: event.account ?? null });
+  if (idErr && (idErr.code === "23505" || idErr.message?.includes("duplicate"))) {
+    // Already processed
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
   // ============================================================
   // PLATFORM EVENTS — SaaS subscriptions (we charge our customers)
   // event.account is NOT set for platform events.

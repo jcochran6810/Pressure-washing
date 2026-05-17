@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/email";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { randomBytes } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +16,18 @@ function adminClient() {
 }
 
 function randomToken() {
-  return (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, "");
+  // 32 bytes = 256 bits of entropy, hex-encoded → 64 chars
+  return randomBytes(32).toString("hex");
 }
 
 export async function POST(request: Request) {
+  // Rate limit: 5 link-request attempts per IP per 15 minutes
+  const ip = clientIp(request);
+  const rl = rateLimit({ key: `portal-link:${ip}`, limit: 5, windowMs: 15 * 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429 });
+  }
+
   let body: any;
   try { body = await request.json(); } catch { body = {}; }
   const email = String(body?.email || "").trim().toLowerCase();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,18 @@ function adminClient() {
 }
 
 export async function GET(request: Request) {
+  // Rate limit: max 10 verify attempts per IP per 15 min (prevents brute force)
+  const ip = clientIp(request);
+  const rl = rateLimit({ key: `portal-verify:${ip}`, limit: 10, windowMs: 15 * 60_000 });
   const url = new URL(request.url);
+  if (!rl.ok) {
+    const u = new URL("/portal/login", url);
+    u.searchParams.set("error", "rate_limit");
+    return NextResponse.redirect(u);
+  }
+
   const token = url.searchParams.get("token") || "";
-  if (!token) return NextResponse.redirect(new URL("/portal/login", url));
+  if (!token || token.length < 32) return NextResponse.redirect(new URL("/portal/login", url));
 
   const supabase = adminClient();
   const { data: session } = await supabase
@@ -42,11 +52,12 @@ export async function GET(request: Request) {
     .eq("id", session.id);
 
   // Set a long-lived HTTP-only cookie tying the browser to this portal session token.
+  // SameSite=strict to prevent CSRF; portal links are clicked from email (not cross-site forms).
   const cookieJar = await cookies();
   cookieJar.set("portal_session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     maxAge: 60 * 60 * 24 * 30, // 30 days
     path: "/",
   });

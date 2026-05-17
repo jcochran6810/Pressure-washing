@@ -18,6 +18,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
             <Link href="/legal/sms-consent" className="text-gray-600 hover:text-gray-900">SMS</Link>
             <Link href="/legal/refund" className="text-gray-600 hover:text-gray-900">Refund</Link>
             <Link href="/legal/acceptable-use" className="text-gray-600 hover:text-gray-900">AUP</Link>
+            <Link href="/legal/cookies" className="text-gray-600 hover:text-gray-900">Cookies</Link>
           </nav>
         </div>
       </header>
