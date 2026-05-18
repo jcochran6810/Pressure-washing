@@ -1,200 +1,335 @@
 # Suds — Software Features Reference
 
-**Suds** is an all-in-one business management application for pressure washing
-companies, built with Next.js 14 (App Router), Supabase, and Tailwind. It bundles
-CRM, scheduling, estimating, invoicing, accounting, chemical inventory, satellite
-measurement, and marketing into a single web app that works on phone or laptop.
+**Suds** is an all-in-one business management platform for home-services
+operators (pressure washing, lawn care, landscaping, HVAC, plumbing, pool,
+pest, painting, handyman, cleaning, roofing, holiday lights, and more —
+21 trades supported). Built with Next.js 14 (App Router), Supabase, Tailwind,
+Stripe (subscription billing + Stripe Connect), Resend / Telnyx, Google Drive,
+Google Calendar, and Google Maps.
+
+> Branch surveyed for this doc: `claude/bulk-document-actions-95rNy`
+> (the most up-to-date branch, 20 commits ahead of `main`). `main` already
+> includes Phase 8 subscription billing + Phase 9 Stripe Connect; the bulk
+> branch additionally adds the **Basic / Plus / Pro** restructure, the 10-day
+> free trial, Pro quota add-on packs, the per-trade add-on, customer portal,
+> public booking widget, platform admin dashboard, comped access, etc.
 
 ---
 
-## A note on software tiers / pricing
+## Subscription tiers (source of truth: `src/lib/billing.ts`)
 
-**The Suds codebase does not implement a tiered subscription model for the
-software itself.** There is a single landing page (`src/app/page.tsx`) with a
-"Start free" CTA, sign-up creates one organization with the full feature set,
-and there is no billing/subscription/plan table in the database, no Stripe
-checkout for subscription tiers, and no feature-gating by plan. Every signed-up
-org gets every feature listed below.
+Every new org gets a **10-day free trial** (`TRIAL_DAYS = 10`) with full
+access. Stripe also enforces the trial via `trial_period_days` at checkout.
+After the trial, access requires an active Stripe subscription **or** a
+platform-admin-granted comped access record.
 
-The Stripe integration that **is** present is only for the pressure washing
-company to collect payments from *their own customers* via payment links — not
-for billing Suds users.
+| Tier      | Price       | Seats        | Email/mo | SMS/mo | BYOC keys | Auto reviews | Custom branding | Priority support |
+|-----------|-------------|--------------|----------|--------|-----------|--------------|-----------------|------------------|
+| **Basic** | **$5/mo**   | 1            | 0        | 0      | No        | No           | No              | No               |
+| **Plus**  | **$15/mo**  | 3            | 200      | 100    | No        | Yes          | Yes             | No               |
+| **Pro**   | **$45/mo**  | Unlimited    | 1,500    | 750    | Yes       | Yes          | Yes             | Yes              |
 
-The word "Pricing" inside the app refers to **how the pressure washing company
-prices the services they sell to their customers** (per-sqft, per-linear-ft,
-material modifiers, deposit thresholds, minimum job total). Those are configured
-per organization under **Services & Pricing** and **Global pricing rules**.
-There are no fixed dollar amounts shipped — each operator sets their own rates.
+### Tier feature bullets (as shown on the plan cards)
 
-If you are looking for SaaS plan pricing to publish externally, that does not
-exist in the repo and would need to be designed and added (likely as a
-`subscription_plans` table, a billing route, and feature flags scoped by plan).
+**Basic — $5/mo** — *"The essentials for a solo operator getting started."*
+- 1 user seat
+- Estimates, invoices & job scheduling
+- Customer & property records
+- Email support
+- No included email or SMS (upgrade to Plus to send messages)
+
+**Plus — $15/mo** — *"Growing crews who need automation and outbound messaging."*
+- Up to 3 user seats
+- 200 platform emails / month
+- 100 SMS messages / month
+- Automated review requests
+- Custom branding on documents
+- Upgrade to Pro for higher send volume
+
+**Pro — $45/mo** — *"High-volume teams that need every feature and headroom to grow."*
+- Unlimited user seats
+- 1,500 platform emails / month
+- 750 SMS messages / month
+- Automated review requests
+- Custom branding on documents
+- Bring-your-own email & SMS keys (BYOC)
+- Stripe Connect for per-business payments
+- Priority support
+- Add quota packs for +5,000 emails & +1,500 SMS each
+
+### Pro quota add-on packs
+- `PRO_ADDON_EMAIL_PER_PACK = 5,000` extra emails per pack
+- `PRO_ADDON_SMS_PER_PACK = 1,500` extra SMS per pack
+- Priced via `STRIPE_PRICE_ID_PRO_ADDON`
+- Stackable — add as many packs as you need
+
+### Multi-trade add-on
+- First **2 business types** are included with every plan
+- Each additional trade: **$3.99/mo** (`BUSINESS_TYPE_ADDON_MONTHLY_PRICE`)
+- Priced via `STRIPE_PRICE_ID_BUSINESS_TYPE_ADDON`
+- Adds the trade's default service catalog and custom-field templates to the org
+
+### Bring-your-own credentials (BYOC) — Pro only
+- Use your own Resend API key for email and your own Telnyx key for SMS
+- Per-org keys are **encrypted at rest** (`src/lib/crypto.ts`)
+- BYOC mode bypasses the platform-tier email/SMS quotas (operator pays their provider)
+- Switch modes from Settings → Messaging
+
+### Comped (free) access
+- Platform admins can grant free access to friends, beta testers, internal accounts
+- `access_grants` table tracks plan tier, reason, granted-by, expiration, revoke history
+- `resolveOrgAccess()` consults both Stripe subscription status and active grants
+
+### Trial lifecycle
+- New orgs get `trial_ends_at = now() + 10 days`
+- In-app banner counts down the trial
+- Trial-end + trial-warning emails sent via the messaging system
+- After trial: restricted mode unless they subscribe or are comped
+
+---
+
+## Supported trades (21)
+
+`pressure_washing`, `lawn_care`, `landscaping`, `house_cleaning`,
+`window_cleaning`, `gutter_cleaning`, `painting`, `handyman`, `hvac`,
+`plumbing`, `electrical`, `pool_service`, `pest_control`, `junk_removal`,
+`carpet_cleaning`, `mobile_detailing`, `roofing`, `appliance_repair`,
+`dryer_vent`, `holiday_lights`, `general_home`.
+
+Each trade ships with its own default service catalog, recommended pricing
+units, and trade-specific custom-field templates (e.g. gate code + yard size
+for lawn, fixture model + serial for appliance repair).
 
 ---
 
 ## Feature inventory
 
 ### Money path — quote → invoice → paid
-- **Customers + properties** — CRM with multi-property per account
+- Customers + multi-property records
 - **Estimates** with line items, 30-day expiry, deposit thresholds, internal
-  duration + buffer
-- **Digital estimate approval** — every estimate gets a public `/quote/<token>`
-  link the customer can approve or decline
-- **Estimate → invoice → payment → receipt** conversion flow
-- **Stripe payment links** auto-created per invoice; payment auto-recorded via
-  webhook (`/api/stripe/webhook`)
-- **Manual payment recording** (cash / check / card / ACH)
-- **Print-friendly HTML** invoices and estimates at `/api/documents/...`
-- **Receipt email** sent on "PAID"
+  duration + buffer, per-line-item photos, measurement-modal line items
+- **Digital approval** — public `/quote/<token>` link the customer can
+  approve or decline; auto-creates the job on acceptance
+- **Edit-in-any-status** — fix typos on sent estimates / invoices / receipts
+  and re-send
+- **Review-before-send** step before invoice goes to customer
+- Estimate → invoice → payment → receipt flow
+- **Stripe payment links** with auto-record on webhook
+- **Stripe Connect** (Pro) — payments land in the operator's own connected
+  Stripe account, not the platform's
+- **Card-on-file** + card-terminal payment recording
+- Manual payment recording (cash / check / card / ACH)
+- **Real PDF export** for estimates and invoices (not just print-HTML)
+- **Unified YY-NNNN document numbering** across all doc types
+- **Drive archive** — every issued PDF backed up to the org's Google Drive
 
 ### Field operations
-- **Jobs** with status (scheduled → in progress → completed) and per-job photos
-- **Drag-and-drop calendar** — grab a job card and drop it on a new day to
-  reschedule; time-of-day preserved; appointment reminders recreated automatically
-- **Appointment reminders** auto-scheduled when a job is booked (default 24 h
-  lead)
-- **Before/after photo galleries** with a public token URL
-- **Photo annotations** — built-in canvas editor for arrows, boxes, circles,
-  freehand, text; annotated render uploaded back to storage and used in
-  galleries / receipts
-- **Contracts & recurring scheduling** — monthly / quarterly / annual service
-  plans that auto-draft estimates (and optionally jobs) on schedule
-  (`/api/cron/contracts`)
+- **Jobs** with status (scheduled → in progress → completed), per-job photos,
+  and per-line-item photos
+- **Drag-and-drop calendar** (week/day) + **month calendar view**
+- **Auto-schedule** workflow — schedule job dialog appears at quote acceptance
+- **Appointment reminders** auto-scheduled when a job is booked (default 24 h)
+- **Before/after photo galleries** with public token URL
+- **Photo annotations** — canvas editor (arrows, boxes, circles, freehand,
+  text); annotated render uploaded back to storage
+- **Auto-invoice on completion** (toggle)
+- **Workflow stepper** + **Next-step banner** — surfaces the next action for
+  every open record
 
-### Services & pricing (service catalog configuration)
-- **Service catalog** with selectable pricing unit: flat / per sqft / per
-  linear ft / per hour / each
-- **Per-service material modifiers** — multipliers for concrete, brick, stucco,
-  vinyl, wood, composite, roof shingle, roof tile, pavers (e.g. 1.2 = +20 %)
-- **Height modifier per story** (default 0.15 = +15 % per story)
-- **Per-service minimum charge** and a **global minimum job total**
-- **Deposit threshold** (e.g. require deposit when estimate exceeds $X) plus a
-  configurable **deposit percentage** (default 0.25 = 25 %)
-- **Add-on services** — mark a service as a suggested add-on
-- **Default duration** per service for scheduling
+### Recurring & contracts
+- **Recurring jobs** ("mow Sarah's lawn every 2 weeks at $45") — daily,
+  weekly, biweekly, triweekly, monthly, quarterly, semiannual, annual,
+  seasonal, or custom-days cadence; cron rolls them forward
+- **Contracts** — monthly / quarterly / annual service plans that auto-draft
+  estimates (and optionally jobs)
+- **Follow-ups** — personal task list per org (call, text, email, site
+  visit, quote follow-up, review request, collection); attach to any
+  customer / lead / estimate / job / invoice
+- Cron endpoints: `/api/cron/reminders`, `/api/cron/contracts`,
+  `/api/cron/recurring`
+
+### Services & pricing (catalog config)
+- Service catalog with 15 pricing units: flat, hour, sq ft, linear ft, room,
+  each, visit, month, acre, fixture, window, panel, load, cubic yard,
+  square (roofing)
+- Per-service **material modifiers** (concrete, brick, stucco, vinyl, wood,
+  composite, roof shingle, roof tile, pavers) and **height-per-story
+  modifier**
+- **Per-service min charge** + **global minimum job total**
+- **Deposit threshold** + configurable **deposit percentage** (default 25 %)
+- **Deposit checkout** (Phase 1) — collect deposit via Stripe at acceptance
+- Add-on services
+- **Load trade defaults** — one-click seed the catalog for any of the 21
+  supported trades
+
+### Custom fields
+- Per-org user-defined fields on customer / lead / estimate / job / invoice
+  / property
+- 10 field types: text, long text, number, currency, dropdown, checkbox,
+  date, phone, email, url
+- Required + customer-visible flags, sort order, active flag
+- Each trade ships with a recommended starter set
+
+### Customer portal & public booking widget
+- **Customer portal** at `/portal/<token>` — magic-link login for the
+  customer to see history, estimates, invoices, pay outstanding balances
+- **Public booking widget** at `/book/<org-slug>` — anonymous lead capture
+  form that drops into the org's lead pipeline
+- **Public org profile** (`organizations.slug`) — branded landing
+- **Short links** at `/u/<token>` for SMS-friendly quote / invoice URLs
 
 ### Inventory
-- **Chemicals** with current stock, reorder levels, SDS URL, hazard class
-- **Chemical transactions** — purchase / usage / waste / adjustment
+- **Chemicals** with current stock, reorder levels, SDS URL, hazard class —
+  pre-loaded with common pressure-washing chemicals on sign-up
+- Chemical transactions: purchase / usage / waste / adjustment
 - **Mix calculator** for SH ratios and surfactant
-- **Equipment tracking** with serial numbers, purchase price, current value,
-  hours used, next service date
+- **Equipment tracking** — serial, purchase price/date, current value, hours
+  used, next service date
 
 ### Accounting & sync
-- **Income** auto-calculated from recorded payments
-- **Expense logging** with categories, vendors, deductible flag, optional
-  receipt URL
-- **Live P&L** for any period (month / last month / quarter / YTD / last 12 mo)
-- **6-month revenue vs expense** bar chart
-- **Vendor breakdown** and **payment method mix**
-- **CSV exports** of invoices, payments, expenses, customers — importable into
-  QuickBooks, Xero, Wave, FreshBooks
-- **QuickBooks Online live sync** via OAuth — push customers + invoices
-  directly to a QBO company (see `/accounting`)
+- Income auto-calculated from recorded payments
+- **Expense logging** with categories, vendors, deductible flag, **receipt
+  photo upload**, expenses analytics page
+- **Live P&L** for any period
+- **6-month revenue vs expense** chart, **vendor breakdown**, **payment
+  method mix**
+- **Service performance** + **top customers** in reports (Phase 4)
+- **CSV exports** for QuickBooks / Xero / Wave / FreshBooks
+- **QuickBooks Online live sync** via OAuth
+- **Tax export aligned to IRS Schedule C** with equipment depreciation
+- **Off-site backup** of accounting data
 
 ### Marketing
-- **Lead pipeline** (new → contacted → quoted → won/lost)
-- **Campaign tracker** with budget, spend, impressions, clicks, conversions
-- **Lead sources** (Google, FB, referral, yard sign, etc.)
-- **Auto review request** after invoice paid — 1–3 stars routed internally,
-  4–5 stars routed to Google
+- **Lead pipeline** (new → contacted → quoted → won/lost) — receives leads
+  from the public booking widget too
+- **Campaign tracker** (budget, spend, impressions, clicks, conversions)
+- **Lead sources** (Google, FB, referral, yard sign, …)
+- **Auto review request** after invoice paid — 1–3★ routed internally,
+  4–5★ routed to Google
 
 ### Measurement
-- **Satellite polygon measurement tool** at `/measure` (Google Maps Drawing,
-  Geometry, Places, Geocoding)
-- Tag each polygon with material + service
-- Attach measurement to a property for re-use
-- Measurements auto-set property GPS for future jobs
+- **Satellite polygon tool** at `/measure` (Google Maps Drawing / Geometry
+  / Places / Geocoding)
+- Tag polygons with material + service
+- Attach measurements to a property and **auto-build estimate line items**
+  from the measurements
+- Auto-set property GPS for future jobs
 
 ### Reminders & messaging
-- **Per-job appointment reminder** (default 24 h lead)
-- **Per-customer recurring service reminder** (default 12 months)
-- Cron endpoints: `POST /api/cron/reminders` and `POST /api/cron/contracts`
-  (secured by `CRON_SECRET`)
-- **Pre-made email + SMS templates** — estimate-send, invoice-send, receipt,
-  payment reminder, appointment reminder, review request, contract renewal,
-  waiver request — customisable per org
-- **Telnyx SMS** — invoices, estimates, receipts, reminders, waiver links can
-  all be sent via SMS in addition to email; every send logged in `sms_log`
+- Per-job appointment reminder + per-customer recurring service reminder
+- **Pre-made email + SMS templates** (estimate-send, invoice-send, receipt,
+  payment reminder, appointment reminder, review request, contract
+  renewal, waiver request) — customisable per org
+- **Telnyx SMS** for all transactional sends; **Twilio SMS** option also
+  scaffolded
+- **Send log** at `/messages` — every email/SMS this org has sent (who,
+  when, status)
+- **Per-org messaging prefs** + customer unsubscribe support
+- **Quota enforcement** at the sender layer against the tier limits
 
 ### Waivers & signed documents
-- Author one or more **liability waivers** per org (version + active flag)
-- Send via email or SMS — customer signs in-app with a touch / mouse
-  signature pad
-- **Audit trail**: IP, user agent, timestamp, signed text, signature image
-  stored in Supabase storage
-- Public sign URL at `/waiver/<token>`; signed waivers appear under customer
-  service history
+- Author multiple liability waivers per org (versioned, active flag)
+- Send via email or SMS; customer signs in-app with a touch/mouse signature pad
+- Audit trail: IP, user agent, timestamp, signed text, signature image
+- Public sign URL at `/waiver/<token>`
 
 ### Customer service history
-- `/customers/<id>/history` aggregates every estimate, job, invoice, payment,
-  photo, and signed waiver
-- Jobs grouped per property ("when was 123 Maple last washed?")
-- **Lifetime metrics**: completed jobs, lifetime invoiced, lifetime paid,
-  outstanding balance
+- `/customers/<id>/history` aggregates every estimate, job, invoice,
+  payment, photo, signed waiver
+- Jobs grouped per property
+- Lifetime metrics: completed jobs, lifetime invoiced, lifetime paid,
+  outstanding
 
-### Documents + Google Drive
-- "View / Print" generates clean HTML invoices/estimates
-- "Save to Drive" uploads to the org's connected Google Drive folder
-- "Email to customer" sends documents via Resend
+### Branding & documents
+- **Logo upload** (per-org Supabase `branding` storage bucket)
+- **Branded PDFs** — invoices, estimates, receipts use the org's logo +
+  colors
+- **Premium document templates** (Pro / customer-branding tier)
+- "View / Print", "Save to Drive", "Email to customer" actions
 
-### Form validation, errors, and toasts
-- Server actions validated via Zod (`src/lib/validation.ts`)
-- Global error boundary (`src/app/error.tsx` + `src/app/global-error.tsx`)
-- In-app toast system (`src/components/toast.tsx`) via `useToast()`
+### Google integrations
+- **Google Drive** — OAuth2, document archive
+- **Google Calendar** — bidirectional sync; show linked Calendar when
+  scheduling an approved job
+- **Google Maps** — measurement tool
+
+### Notifications & nav
+- **In-app notifications bell** with nav badges
+- **Today-first dashboard** + dashboard hub
+- **5-tab mobile bottom nav** + flat bottom-bar Add button
+- **First-run welcome banner** on Today
+- **Workflow stepper** across estimate → job → invoice → payment lifecycle
+
+### Security & auth
+- Email + password sign-up; **2FA** support
+- **Pre-deletion warning** on destructive actions, **auto-save** drafts
+- **Audit log** of org-level user actions
+- **Cookies** banner + lifecycle / legal pages
+- Auth cookies `maxAge = 1 year`, `sameSite=lax`; middleware silently
+  refreshes the access token
+- **Row-Level Security** on every table via `is_org_member(org_id)`
+- Public flows (`/quote`, `/gallery`, `/review`, `/waiver`, `/portal`,
+  `/book`) use scoped `anon` policies with random tokens
+- **BYOC keys encrypted at rest**
+
+### Platform admin (`/admin`)
+- Dedicated admin login (hidden from in-app nav)
+- Dashboards: **Companies**, **Users**, **Subscriptions**, **Payments**,
+  **Usage**, **Errors**, **Actions** (audit log)
+- **Admin actions log** — every admin op recorded
+- **App errors log** — runtime errors surfaced
+- **Pricing admin** — adjust plan visibility / Stripe price IDs
+- **Suspend abusive accounts** (`organizations.disabled_at`)
+- **Grant comped access** with reason + expiration
+
+### Operations & safety nets
+- **Lifecycle emails** (welcome, trial warning, trial end, payment failed)
+- **Restricted mode** when subscription lapses
+- **FAQ**, **legal pages**, **ops runbooks**, **trademark guide**,
+  **contractor IP template**
+- **Changelog** in-app
+- **Tier 1 automated test suite**
+- Global error boundary (`error.tsx` + `global-error.tsx`) + Zod validation
+  on every server action + in-app toast system
 
 ### Demo mode
-- "Try the demo" button on the login page creates an anonymous Supabase
-  session pre-loaded with realistic sample customers, jobs, invoices, expenses
-- Demo orgs are flagged `is_demo=true` for easy cleanup
-- Requires Authentication → Providers → Anonymous to be enabled in Supabase
-
-### Settings & integrations
-- **Business info** — name, address, phone, email, tax rate, currency
-- **Numbering prefixes** for invoices and estimates
-- **Connect / disconnect Google Drive** (OAuth2 refresh tokens per org)
-- **Integration status indicators** for Stripe / Resend / Google Maps / Drive /
-  Telnyx / QuickBooks Online
-- App degrades gracefully — features without API keys show "not configured"
-  hints in Settings → Integrations
-
-### Auth & session persistence
-- Email + password sign-up (creates org + default services/categories/lead
-  sources via the `handle_new_user()` trigger)
-- Auth cookies with `maxAge` of one year and `sameSite=lax`
-- Middleware silently refreshes access tokens on every authenticated request
-- Users stay signed in on phone or laptop until they explicitly hit **Sign out**
-
-### Security
-- **Row-Level Security** on every table via `is_org_member(org_id)` —
-  queries are scoped to the user's organization
-- Public flows (quote, gallery, review, waiver) use scoped `anon` policies
-  with random tokens
+- "Try the demo" on login creates an anonymous Supabase session pre-loaded
+  with realistic customers, jobs, invoices, expenses
+- Demo orgs flagged `is_demo=true` for cleanup
 
 ---
 
-## App routes (authenticated modules)
-
-`/dashboard`, `/customers`, `/estimates`, `/jobs`, `/calendar`, `/invoices`,
-`/payments`, `/expenses`, `/accounting`, `/reports`, `/leads`, `/campaigns`,
-`/services`, `/chemicals`, `/equipment`, `/mix`, `/measure`, `/contracts`,
-`/waivers`, `/settings`.
+## App routes (authenticated)
+`/dashboard` (Today-first), `/customers`, `/properties`, `/leads`,
+`/estimates`, `/jobs`, `/calendar`, `/recurring`, `/follow-ups`, `/contracts`,
+`/invoices`, `/payments`, `/expenses`, `/accounting`, `/reports`,
+`/campaigns`, `/services`, `/custom-fields`, `/chemicals`, `/equipment`,
+`/mix`, `/measure`, `/waivers`, `/messages`, `/settings`.
 
 ## Public flows
-`/quote/<token>`, `/gallery/<token>`, `/review/<token>`, `/waiver/<token>`.
+`/quote/<token>`, `/gallery/<token>`, `/review/<token>`, `/waiver/<token>`,
+`/portal/<token>` (customer portal), `/book/<slug>` (booking widget),
+`/u/<token>` (short links).
+
+## Platform admin
+`/admin/login`, `/admin` (dashboard), `/admin/companies`, `/admin/users`,
+`/admin/subscriptions`, `/admin/payments`, `/admin/usage`, `/admin/errors`,
+`/admin/actions`.
 
 ## Required environment variables
 
 | Variable | Required for |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | All |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All |
 | `NEXT_PUBLIC_APP_URL` | Public links, OAuth redirects |
-| `STRIPE_SECRET_KEY` | Stripe payment links |
-| `STRIPE_WEBHOOK_SECRET` | Stripe auto-payment recording |
-| `RESEND_API_KEY` + `RESEND_FROM` | Email receipts, reminders, review requests |
-| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Google Drive integration |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Satellite measurement tool |
-| `TELNYX_API_KEY` + `TELNYX_FROM_NUMBER` | SMS sending |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Payments + subscriptions |
+| `STRIPE_PRICE_ID_BASIC` / `STRIPE_PRICE_ID_PLUS` / `STRIPE_PRICE_ID_PRO` | Tier checkout |
+| `STRIPE_PRICE_ID_PRO_ADDON` | Pro quota add-on packs |
+| `STRIPE_PRICE_ID_BUSINESS_TYPE_ADDON` | Per-trade add-on beyond first 2 |
+| `RESEND_API_KEY` + `RESEND_FROM` | Platform email (when not BYOC) |
+| `TELNYX_API_KEY` + `TELNYX_FROM_NUMBER` | Platform SMS (when not BYOC) |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Drive + Calendar OAuth |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Satellite measurement |
 | `QBO_CLIENT_ID` + `QBO_CLIENT_SECRET` + `QBO_REDIRECT_URI` + `QBO_ENVIRONMENT` | QuickBooks Online sync |
-| `CRON_SECRET` | Securing reminders + contracts cron endpoints |
+| `CRON_SECRET` | Securing cron endpoints |
+| `BYOC_ENCRYPTION_KEY` | Encrypting per-org Resend / Telnyx keys |
