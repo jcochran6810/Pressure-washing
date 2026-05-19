@@ -30,28 +30,61 @@ function round2(n: number) {
 
 function parseLineItems(formData: FormData): LineItem[] {
   const groups = formData.getAll("li_group") as string[];
-  const sides: ("labor" | "material")[] = ["labor", "material"];
-  const byField = (side: string, name: string) => formData.getAll(`${side}_${name}`) as string[];
+  const laborDescs = formData.getAll("labor_description") as string[];
+  const laborQtys = formData.getAll("labor_quantity") as string[];
+  const laborPrices = formData.getAll("labor_unit_price") as string[];
+  const laborMarkers = formData.getAll("labor_taxable_marker") as string[];
+  const entryMatStrs = formData.getAll("entry_materials") as string[];
+  const entryPhotoStrs = formData.getAll("entry_photos") as string[];
+
   const out: LineItem[] = [];
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
-    for (const side of sides) {
-      const desc = (byField(side, "description")[i] || "").trim();
-      if (!desc) continue;
-      const qty = Number(byField(side, "quantity")[i] || 1);
-      const price = Number(byField(side, "unit_price")[i] || 0);
-      const marker = byField(side, "taxable_marker")[i];
-      const taxable = marker != null ? marker === "checked" : true;
-      out.push({
-        description: desc,
-        quantity: qty,
-        unit_price: price,
+
+    let photos: string[] = [];
+    try {
+      const arr = JSON.parse(entryPhotoStrs[i] || "[]");
+      if (Array.isArray(arr)) photos = arr.filter((u: unknown) => typeof u === "string");
+    } catch {}
+
+    const rowsForEntry: LineItem[] = [];
+
+    const laborDesc = (laborDescs[i] || "").trim();
+    if (laborDesc) {
+      rowsForEntry.push({
+        description: laborDesc,
+        quantity: Number(laborQtys[i] || 1),
+        unit_price: Number(laborPrices[i] || 0),
         photos: [],
-        kind: side as LineKind,
-        taxable,
+        kind: "labor",
+        taxable: laborMarkers[i] != null ? laborMarkers[i] === "checked" : true,
         line_group: group,
       });
     }
+
+    let materials: { description: string; quantity: number; unit_price: number; taxable: boolean }[] = [];
+    try {
+      const arr = JSON.parse(entryMatStrs[i] || "[]");
+      if (Array.isArray(arr)) materials = arr;
+    } catch {}
+    for (const m of materials) {
+      const desc = (m.description || "").trim();
+      if (!desc) continue;
+      rowsForEntry.push({
+        description: desc,
+        quantity: Number(m.quantity ?? 1),
+        unit_price: Number(m.unit_price ?? 0),
+        photos: [],
+        kind: "material",
+        taxable: m.taxable !== false,
+        line_group: group,
+      });
+    }
+
+    if (rowsForEntry.length > 0 && photos.length > 0) {
+      rowsForEntry[0].photos = photos;
+    }
+    out.push(...rowsForEntry);
   }
   return out;
 }

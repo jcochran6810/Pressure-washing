@@ -8,8 +8,15 @@ import { CustomerPicker } from "@/components/customer-picker";
 
 export const dynamic = "force-dynamic";
 
-export default async function EditInvoicePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditInvoicePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ from?: string }>;
+}) {
   const { id } = await params;
+  const { from } = (await searchParams) ?? {};
   const { supabase, organizationId, organization } = await getSessionAndOrg();
 
   const [{ data: inv }, { data: customers }, { data: services }, { data: docPhotos }] = await Promise.all([
@@ -44,6 +51,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       kind: (li.kind as "labor" | "material" | "service" | "other") ?? "service",
       taxable: li.taxable !== false,
       line_group: (li.line_group as string | null) ?? null,
+      photo_urls: (li.photo_urls as string[] | null) ?? null,
     }));
   const initialDocPhotos = (docPhotos ?? []).map((p: any) => ({
     url: p.url as string,
@@ -56,10 +64,19 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     <div className="max-w-3xl">
       <Link href={`/invoices/${id}`} className="text-sm text-brand-600 hover:underline">← Back to invoice</Link>
       <h1 className="text-2xl font-bold mt-2 mb-1">Edit invoice {(inv as any).invoice_number}</h1>
-      <p className="text-sm text-gray-600 mb-5">
-        Editable while in draft. Once you send it (or it gets paid), this view will lock —
-        record an adjustment or issue a credit invoice if you need to change something later.
-      </p>
+      {from === "job" ? (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 mb-5">
+          <strong>Job completed — invoice drafted.</strong> Review the line items below,
+          tap <em>+ Add picture</em> to attach completion photos, then save and head back
+          to the invoice to send it to the customer. Estimate + job photos have already
+          been carried forward.
+        </div>
+      ) : (
+        <p className="text-sm text-gray-600 mb-5">
+          Editable while in draft. Once you send it (or it gets paid), this view will lock —
+          record an adjustment or issue a credit invoice if you need to change something later.
+        </p>
+      )}
 
       <form action={update} className="space-y-5">
         <div className="card-padded grid grid-cols-1 sm:grid-cols-2 gap-3">

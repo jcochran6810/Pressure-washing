@@ -47,6 +47,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
       kind: (li.kind as "labor" | "material" | "service" | "other") ?? "service",
       taxable: li.taxable !== false,
       line_group: (li.line_group as string | null) ?? null,
+      photo_urls: (li.photo_urls as string[] | null) ?? null,
     }));
   const initialDocPhotos = (docPhotos ?? []).map((p: any) => ({
     url: p.url as string,
