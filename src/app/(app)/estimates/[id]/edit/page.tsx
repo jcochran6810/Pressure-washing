@@ -12,7 +12,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
   const { id } = await params;
   const { supabase, organizationId, organization } = await getSessionAndOrg();
 
-  const [{ data: est }, { data: customers }, { data: services }] = await Promise.all([
+  const [{ data: est }, { data: customers }, { data: services }, { data: docPhotos }] = await Promise.all([
     supabase
       .from("estimates")
       .select("*, estimate_line_items(*), customers(id, first_name, last_name, company_name)")
@@ -21,6 +21,13 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
       .maybeSingle(),
     supabase.from("customers").select("id, first_name, last_name, company_name").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("services").select("id, name, default_price, default_kind, default_taxable").eq("organization_id", organizationId).eq("active", true).order("name"),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption")
+      .eq("estimate_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
   ]);
 
   if (!est) notFound();
@@ -37,10 +44,14 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
       description: li.description,
       quantity: Number(li.quantity ?? 1),
       unit_price: Number(li.unit_price ?? 0),
-      photos: (li.photo_urls as string[]) ?? [],
       kind: (li.kind as "labor" | "material" | "service" | "other") ?? "service",
       taxable: li.taxable !== false,
+      line_group: (li.line_group as string | null) ?? null,
     }));
+  const initialDocPhotos = (docPhotos ?? []).map((p: any) => ({
+    url: p.url as string,
+    note: (p.caption as string | null) ?? "",
+  }));
 
   const update = updateEstimate.bind(null, id);
 
@@ -84,6 +95,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
           <LineItemEditor
             services={(services as any) ?? []}
             initial={items}
+            initialDocPhotos={initialDocPhotos}
             taxRateInitial={Number((est as any).tax_rate ?? organization?.tax_rate ?? 0)}
             discountInitial={Number((est as any).discount_amount ?? 0)}
             organizationId={organizationId}

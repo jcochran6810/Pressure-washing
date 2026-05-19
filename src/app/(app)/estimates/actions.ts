@@ -17,7 +17,9 @@ type LineItem = {
   photos: string[];
   kind: LineKind;
   taxable: boolean;
+  line_group: string;
 };
+type DocPhoto = { url: string; note: string };
 
 async function nextNumber(prefix: string, orgId: string, supabase: any, field: "next_estimate_number" | "next_invoice_number") {
   // Both fields share the same counter going forward (see src/lib/numbering.ts).
@@ -26,56 +28,85 @@ async function nextNumber(prefix: string, orgId: string, supabase: any, field: "
   return nextDocumentNumber(supabase, orgId);
 }
 
-// li_row_marker is emitted once per rendered row (whether taxable or not)
-// so we can align the sparse li_taxable checkbox values against the dense
-// li_description / li_kind arrays. Without this, an unchecked taxable on
-// row 0 would silently shift every following row's taxable flag.
+// The editor renders one entry per line_group; each entry posts a labor
+// sub-row and a material sub-row (either may be blank). We flatten that
+// back into the per-row shape the database expects, dropping blank sides
+// and tagging each persisted row with its shared line_group so the edit
+// view can re-pair them.
 function parseLineItems(formData: FormData): LineItem[] {
-  const descs = formData.getAll("li_description") as string[];
-  const qtys = formData.getAll("li_quantity") as string[];
-  const prices = formData.getAll("li_unit_price") as string[];
-  const photoStrs = formData.getAll("li_photos") as string[];
-  const kinds = formData.getAll("li_kind") as string[];
-  // For taxable we rebuild row-aligned values by reading each marked row's
-  // checkbox. React's controlled checkbox only POSTs when checked, so we
-  // can't trust position; instead the form emits "li_taxable_<idx>" or
-  // we use the marker count and a parallel "li_taxable" stream that's
-  // always emitted as "1" when present. Here we go the simpler route:
-  // for each row index, look at the row's `checked` attribute via a
-  // hidden li_taxable_per_row field that the client owes us. As of this
-  // implementation the client controls visibility via state, so we
-  // fallback to inferring from getAll("li_taxable") which captures only
-  // the rows whose box is checked — and we trust the client to emit a
-  // hidden per-row marker pair so we know which were unchecked.
-  //
-  // Concretely: each rendered row outputs both a checkbox name="li_taxable"
-  // (value "1" iff checked) and a hidden name="li_taxable_marker" with
-  // value "checked" or "unchecked". We zip the markers to get the per-row
-  // taxable flag.
-  const markers = formData.getAll("li_taxable_marker") as string[];
+  const groups = formData.getAll("li_group") as string[];
+  const sides: ("labor" | "material")[] = ["labor", "material"];
+
+  // Per-side parallel arrays. Each array's index = entry position; the
+  // editor always emits a value at every position, even when the field
+  // is empty, so we don't have to worry about sparse alignment.
+  const byField = (side: string, name: string) => formData.getAll(`${side}_${name}`) as string[];
 
   const out: LineItem[] = [];
-  for (let i = 0; i < descs.length; i++) {
-    const d = (descs[i] || "").trim();
-    if (!d) continue;
-    let urls: string[] = [];
-    try {
-      const parsed = JSON.parse(photoStrs[i] || "[]");
-      if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
-    } catch {}
-    const rawKind = (kinds[i] || "service") as LineKind;
-    const kind: LineKind = ["labor", "material", "service", "other"].includes(rawKind) ? rawKind : "service";
-    const taxable = markers[i] != null ? markers[i] === "checked" : true;
-    out.push({
-      description: d,
-      quantity: Number(qtys[i] || 1),
-      unit_price: Number(prices[i] || 0),
-      photos: urls,
-      kind,
-      taxable,
-    });
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    for (const side of sides) {
+      const desc = (byField(side, "description")[i] || "").trim();
+      if (!desc) continue;
+      const qty = Number(byField(side, "quantity")[i] || 1);
+      const price = Number(byField(side, "unit_price")[i] || 0);
+      const marker = byField(side, "taxable_marker")[i];
+      const taxable = marker != null ? marker === "checked" : true;
+      out.push({
+        description: desc,
+        quantity: qty,
+        unit_price: price,
+        photos: [],
+        kind: side as LineKind,
+        taxable,
+        line_group: group,
+      });
+    }
   }
   return out;
+}
+
+function parseDocPhotos(formData: FormData): DocPhoto[] {
+  const urls = formData.getAll("doc_photo_url") as string[];
+  const notes = formData.getAll("doc_photo_note") as string[];
+  const out: DocPhoto[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = (urls[i] || "").trim();
+    if (!url) continue;
+    out.push({ url, note: (notes[i] || "").trim() });
+  }
+  return out;
+}
+
+async function syncDocPhotos(
+  supabase: any,
+  organizationId: string,
+  target: { estimate_id?: string; invoice_id?: string },
+  customer_id: string | null,
+  photos: DocPhoto[],
+) {
+  // Replace, don't merge — the editor always sends the full current set,
+  // and the user might have removed a picture between edits.
+  const matchCol = target.estimate_id ? "estimate_id" : "invoice_id";
+  const matchId = target.estimate_id ?? target.invoice_id;
+  await supabase
+    .from("photo_attachments")
+    .delete()
+    .eq(matchCol, matchId)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (!photos.length) return;
+  await supabase.from("photo_attachments").insert(
+    photos.map((p) => ({
+      organization_id: organizationId,
+      customer_id: customer_id ?? null,
+      estimate_id: target.estimate_id ?? null,
+      invoice_id: target.invoice_id ?? null,
+      kind: "reference",
+      url: p.url,
+      caption: p.note || null,
+    })),
+  );
 }
 
 function computeRollups(items: LineItem[]) {
@@ -126,6 +157,7 @@ export async function createEstimate(formData: FormData) {
   const globalMin = Number(organization?.global_min_job_price ?? 0);
   const preMinSubtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
   if (globalMin > 0 && preMinSubtotal < globalMin) {
+    const syntheticGroup = crypto.randomUUID();
     if (items.length === 0) {
       items.push({
         description: "Minimum service charge",
@@ -134,6 +166,7 @@ export async function createEstimate(formData: FormData) {
         photos: [],
         kind: "service",
         taxable: true,
+        line_group: syntheticGroup,
       });
     } else {
       items.push({
@@ -143,6 +176,7 @@ export async function createEstimate(formData: FormData) {
         photos: [],
         kind: "service",
         taxable: false,
+        line_group: syntheticGroup,
       });
     }
   }
@@ -192,8 +226,14 @@ export async function createEstimate(formData: FormData) {
         photo_urls: i.photos,
         kind: i.kind,
         taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
+  }
+
+  const docPhotos = parseDocPhotos(formData);
+  if (docPhotos.length) {
+    await syncDocPhotos(supabase, organizationId, { estimate_id: est.id }, customer_id, docPhotos);
   }
 
   revalidatePath("/estimates");
@@ -277,9 +317,13 @@ export async function updateEstimate(id: string, formData: FormData) {
         photo_urls: i.photos,
         kind: i.kind,
         taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
   }
+
+  const docPhotos = parseDocPhotos(formData);
+  await syncDocPhotos(supabase, organizationId, { estimate_id: id }, customer_id, docPhotos);
 
   revalidatePath(`/estimates/${id}`);
   revalidatePath("/estimates");
@@ -395,9 +439,32 @@ export async function convertEstimateToInvoice(estimateId: string) {
         photo_urls: li.photo_urls ?? [],
         kind: li.kind ?? "service",
         taxable: li.taxable ?? true,
+        line_group: li.line_group ?? null,
       })),
     );
   }
+
+  // Carry document-level reference photos from the estimate over to the
+  // invoice so the customer sees the same job pictures on both docs.
+  const { data: estPhotos } = await supabase
+    .from("photo_attachments")
+    .select("url, caption, customer_id")
+    .eq("estimate_id", est.id)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (estPhotos?.length) {
+    await supabase.from("photo_attachments").insert(
+      (estPhotos as any[]).map((p) => ({
+        organization_id: organizationId,
+        customer_id: p.customer_id,
+        invoice_id: inv.id,
+        kind: "reference",
+        url: p.url,
+        caption: p.caption,
+      })),
+    );
+  }
+
   await supabase.from("estimates").update({ status: "converted" }).eq("id", est.id);
 
   // Make sure a job exists too, marked completed since we're skipping straight to invoice.
@@ -413,13 +480,23 @@ export async function convertEstimateToInvoice(estimateId: string) {
 
 async function loadEstimateForDoc(id: string) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { data: est } = await supabase
-    .from("estimates")
-    .select("*, customers(*), estimate_line_items(*)")
-    .eq("id", id)
-    .eq("organization_id", organizationId)
-    .single();
+  const [{ data: est }, { data: photos }] = await Promise.all([
+    supabase
+      .from("estimates")
+      .select("*, customers(*), estimate_line_items(*)")
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .single(),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption, created_at")
+      .eq("estimate_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
+  ]);
   if (!est) throw new Error("Estimate not found");
+  (est as any).docPhotos = (photos ?? []).map((p: any) => ({ url: p.url, note: p.caption ?? null }));
   return { supabase, organizationId, organization, est };
 }
 
@@ -440,6 +517,7 @@ function estimateDocHtml(organization: any, est: any) {
       kind: li.kind ?? "service",
       taxable: li.taxable ?? true,
     })),
+    docPhotos: (est.docPhotos as { url: string; note: string | null }[]) ?? [],
     subtotal: Number(est.subtotal),
     discount: Number(est.discount_amount),
     taxRate: Number(est.tax_rate),

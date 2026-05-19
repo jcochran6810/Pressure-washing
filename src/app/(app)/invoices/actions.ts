@@ -20,41 +20,78 @@ type LineItem = {
   photos: string[];
   kind: LineKind;
   taxable: boolean;
+  line_group: string;
 };
+type DocPhoto = { url: string; note: string };
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
 function parseLineItems(formData: FormData): LineItem[] {
-  const descs = formData.getAll("li_description") as string[];
-  const qtys = formData.getAll("li_quantity") as string[];
-  const prices = formData.getAll("li_unit_price") as string[];
-  const photoStrs = formData.getAll("li_photos") as string[];
-  const kinds = formData.getAll("li_kind") as string[];
-  const markers = formData.getAll("li_taxable_marker") as string[];
+  const groups = formData.getAll("li_group") as string[];
+  const sides: ("labor" | "material")[] = ["labor", "material"];
+  const byField = (side: string, name: string) => formData.getAll(`${side}_${name}`) as string[];
   const out: LineItem[] = [];
-  for (let i = 0; i < descs.length; i++) {
-    const d = (descs[i] || "").trim();
-    if (!d) continue;
-    let urls: string[] = [];
-    try {
-      const parsed = JSON.parse(photoStrs[i] || "[]");
-      if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
-    } catch {}
-    const rawKind = (kinds[i] || "service") as LineKind;
-    const kind: LineKind = ["labor", "material", "service", "other"].includes(rawKind) ? rawKind : "service";
-    const taxable = markers[i] != null ? markers[i] === "checked" : true;
-    out.push({
-      description: d,
-      quantity: Number(qtys[i] || 1),
-      unit_price: Number(prices[i] || 0),
-      photos: urls,
-      kind,
-      taxable,
-    });
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    for (const side of sides) {
+      const desc = (byField(side, "description")[i] || "").trim();
+      if (!desc) continue;
+      const qty = Number(byField(side, "quantity")[i] || 1);
+      const price = Number(byField(side, "unit_price")[i] || 0);
+      const marker = byField(side, "taxable_marker")[i];
+      const taxable = marker != null ? marker === "checked" : true;
+      out.push({
+        description: desc,
+        quantity: qty,
+        unit_price: price,
+        photos: [],
+        kind: side as LineKind,
+        taxable,
+        line_group: group,
+      });
+    }
   }
   return out;
+}
+
+function parseDocPhotos(formData: FormData): DocPhoto[] {
+  const urls = formData.getAll("doc_photo_url") as string[];
+  const notes = formData.getAll("doc_photo_note") as string[];
+  const out: DocPhoto[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = (urls[i] || "").trim();
+    if (!url) continue;
+    out.push({ url, note: (notes[i] || "").trim() });
+  }
+  return out;
+}
+
+async function syncInvoiceDocPhotos(
+  supabase: any,
+  organizationId: string,
+  invoice_id: string,
+  customer_id: string | null,
+  photos: DocPhoto[],
+) {
+  await supabase
+    .from("photo_attachments")
+    .delete()
+    .eq("invoice_id", invoice_id)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (!photos.length) return;
+  await supabase.from("photo_attachments").insert(
+    photos.map((p) => ({
+      organization_id: organizationId,
+      customer_id: customer_id ?? null,
+      invoice_id,
+      kind: "reference",
+      url: p.url,
+      caption: p.note || null,
+    })),
+  );
 }
 
 function computeRollups(items: LineItem[]) {
@@ -140,8 +177,14 @@ export async function createInvoice(formData: FormData) {
         photo_urls: i.photos,
         kind: i.kind,
         taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
+  }
+
+  const docPhotos = parseDocPhotos(formData);
+  if (docPhotos.length) {
+    await syncInvoiceDocPhotos(supabase, organizationId, inv.id, customer_id, docPhotos);
   }
 
   revalidatePath("/invoices");
@@ -211,9 +254,13 @@ export async function updateInvoice(id: string, formData: FormData) {
         photo_urls: i.photos,
         kind: i.kind,
         taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
   }
+
+  const docPhotos = parseDocPhotos(formData);
+  await syncInvoiceDocPhotos(supabase, organizationId, id, customer_id, docPhotos);
 
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
@@ -389,13 +436,23 @@ export async function createStripePaymentLink(invoiceId: string) {
 
 async function loadInvoiceForDoc(id: string) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { data: inv } = await supabase
-    .from("invoices")
-    .select("*, customers(*), invoice_line_items(*)")
-    .eq("id", id)
-    .eq("organization_id", organizationId)
-    .single();
+  const [{ data: inv }, { data: photos }] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select("*, customers(*), invoice_line_items(*)")
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .single(),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption, created_at")
+      .eq("invoice_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
+  ]);
   if (!inv) throw new Error("Invoice not found");
+  (inv as any).docPhotos = (photos ?? []).map((p: any) => ({ url: p.url, note: p.caption ?? null }));
   return { supabase, organizationId, organization, inv };
 }
 
@@ -417,6 +474,7 @@ export async function saveInvoiceToDrive(id: string) {
       kind: li.kind ?? "service",
       taxable: li.taxable ?? true,
     })),
+    docPhotos: ((inv as any).docPhotos as { url: string; note: string | null }[]) ?? [],
     subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
     tax: Number(inv.tax_amount), total: Number(inv.total),
     amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
@@ -475,6 +533,7 @@ export async function emailInvoiceToCustomer(id: string) {
       kind: li.kind ?? "service",
       taxable: li.taxable ?? true,
     })),
+    docPhotos: ((fresh as any).docPhotos as { url: string; note: string | null }[]) ?? [],
     subtotal: Number(fresh.subtotal), discount: Number(fresh.discount_amount), taxRate: Number(fresh.tax_rate),
     tax: Number(fresh.tax_amount), total: Number(fresh.total),
     amountPaid: Number(fresh.amount_paid), balanceDue: Number(fresh.balance_due),

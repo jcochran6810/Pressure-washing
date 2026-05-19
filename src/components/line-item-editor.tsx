@@ -7,14 +7,27 @@ import { MeasurementModal } from "./measurement-modal";
 
 export type LineKind = "labor" | "material" | "service" | "other";
 
-type Item = {
+// One side of a paired entry. Either side may be empty (description blank);
+// blank sides aren't persisted as line_items rows on save.
+type SubLine = {
   description: string;
   quantity: number;
   unit_price: number;
-  photos: string[];
-  kind: LineKind;
   taxable: boolean;
 };
+
+// A paired entry = one shared row in the editor with a labor sub-row on
+// the left and a material sub-row on the right. Both sub-rows share a
+// line_group uuid so the database can rebuild the pair on edit.
+type Entry = {
+  group: string;
+  labor: SubLine;
+  material: SubLine;
+  // Per-line photos are still supported by the schema (photo_urls on each
+  // line item) but we no longer surface them here — pictures attach at
+  // the document level instead (DocPhoto below).
+};
+
 type Service = {
   id: string;
   name: string;
@@ -23,9 +36,70 @@ type Service = {
   default_taxable?: boolean | null;
 };
 
+type DocPhoto = { url: string; note: string };
+
+// When loading existing line_items rows on the edit page, we group them
+// by line_group so the editor re-renders paired rows correctly.
+export type LineItemInit = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  kind: LineKind;
+  taxable: boolean;
+  line_group?: string | null;
+};
+
+function blankSub(): SubLine {
+  return { description: "", quantity: 1, unit_price: 0, taxable: true };
+}
+
+function groupInitial(items: LineItemInit[]): Entry[] {
+  if (!items.length) return [{ group: crypto.randomUUID(), labor: blankSub(), material: blankSub() }];
+  // Bucket by line_group, then process buckets in encountered order.
+  const buckets = new Map<string, LineItemInit[]>();
+  const seen: string[] = [];
+  for (const it of items) {
+    const key = it.line_group ?? `solo-${seen.length}-${it.kind}-${it.description}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      seen.push(key);
+    }
+    buckets.get(key)!.push(it);
+  }
+  return seen.map((key) => {
+    const rows = buckets.get(key)!;
+    const labor = rows.find((r) => r.kind === "labor");
+    const material = rows.find((r) => r.kind === "material");
+    // Anything that isn't labor / material (legacy 'service' / 'other')
+    // lands on the labor column as a single-sided entry.
+    const other = rows.find((r) => r.kind !== "labor" && r.kind !== "material");
+    const laborSrc = labor ?? other ?? null;
+    return {
+      group: key.startsWith("solo-") ? crypto.randomUUID() : key,
+      labor: laborSrc
+        ? {
+            description: laborSrc.description,
+            quantity: laborSrc.quantity,
+            unit_price: laborSrc.unit_price,
+            taxable: laborSrc.taxable,
+          }
+        : blankSub(),
+      material: material
+        ? {
+            description: material.description,
+            quantity: material.quantity,
+            unit_price: material.unit_price,
+            taxable: material.taxable,
+          }
+        : blankSub(),
+    };
+  });
+}
+
 export function LineItemEditor({
   services,
   initial,
+  initialDocPhotos,
   taxRateInitial,
   discountInitial,
   organizationId,
@@ -33,97 +107,98 @@ export function LineItemEditor({
   initialAddress,
 }: {
   services: Service[];
-  initial?: Item[];
+  initial?: LineItemInit[];
+  initialDocPhotos?: DocPhoto[];
   taxRateInitial?: number;
   discountInitial?: number;
   organizationId: string;
   mapsApiKey?: string | null;
   initialAddress?: string;
 }) {
-  const [items, setItems] = useState<Item[]>(
-    initial?.length
-      ? initial
-      : [
-          {
-            description: "",
-            quantity: 1,
-            unit_price: 0,
-            photos: [],
-            kind: "service",
-            taxable: true,
-          },
-        ],
+  const [entries, setEntries] = useState<Entry[]>(
+    initial?.length ? groupInitial(initial) : [{ group: crypto.randomUUID(), labor: blankSub(), material: blankSub() }],
   );
+  const [docPhotos, setDocPhotos] = useState<DocPhoto[]>(initialDocPhotos ?? []);
   const [taxRate, setTaxRate] = useState<number>(taxRateInitial ?? 0);
   const [discount, setDiscount] = useState<number>(discountInitial ?? 0);
-  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
-  const [uploadErr, setUploadErr] = useState<string | null>(null);
-  const [measuringIdx, setMeasuringIdx] = useState<number | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
+  const [measuringIdx, setMeasuringIdx] = useState<{ entry: number; side: "labor" | "material" } | null>(null);
   const supabase = useRef(createClient()).current;
 
-  function update(i: number, patch: Partial<Item>) {
-    setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  function updateSub(i: number, side: "labor" | "material", patch: Partial<SubLine>) {
+    setEntries((arr) =>
+      arr.map((e, idx) => (idx === i ? { ...e, [side]: { ...e[side], ...patch } } : e)),
+    );
   }
-  function remove(i: number) {
-    setItems((arr) => arr.filter((_, idx) => idx !== i));
+  function removeEntry(i: number) {
+    setEntries((arr) => (arr.length > 1 ? arr.filter((_, idx) => idx !== i) : arr));
   }
-  function add() {
-    setItems((arr) => [
-      ...arr,
-      { description: "", quantity: 1, unit_price: 0, photos: [], kind: "service", taxable: true },
-    ]);
+  function addEntry() {
+    setEntries((arr) => [...arr, { group: crypto.randomUUID(), labor: blankSub(), material: blankSub() }]);
   }
-  function applyService(i: number, serviceId: string) {
+  function applyService(i: number, side: "labor" | "material", serviceId: string) {
     const s = services.find((x) => x.id === serviceId);
     if (!s) return;
-    update(i, {
+    // If the service has a default_kind, route it to the matching side so
+    // picking a labor service on the material column moves it across.
+    const targetSide: "labor" | "material" =
+      s.default_kind === "material" ? "material" : s.default_kind === "labor" ? "labor" : side;
+    updateSub(i, targetSide, {
       description: s.name,
       unit_price: Number(s.default_price ?? 0),
-      kind: (s.default_kind as LineKind | undefined) ?? items[i].kind,
-      taxable: typeof s.default_taxable === "boolean" ? s.default_taxable : items[i].taxable,
+      taxable: typeof s.default_taxable === "boolean" ? s.default_taxable : entries[i][targetSide].taxable,
     });
   }
 
-  async function handleFiles(i: number, files: FileList | null) {
+  async function handleDocPhotos(files: FileList | null) {
     if (!files?.length) return;
-    setUploadingIdx(i);
-    setUploadErr(null);
-    const newUrls: string[] = [];
+    setUploadingPhoto(true);
+    setPhotoErr(null);
+    const newOnes: DocPhoto[] = [];
     for (const file of Array.from(files)) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${organizationId}/line-items/${crypto.randomUUID()}.${ext}`;
+      const path = `${organizationId}/doc-photos/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
       if (upErr) {
-        setUploadErr(upErr.message);
-        setUploadingIdx(null);
+        setPhotoErr(upErr.message);
+        setUploadingPhoto(false);
         return;
       }
       const { data: signed } = await supabase.storage.from("photos").createSignedUrl(path, 60 * 60 * 24 * 365);
-      newUrls.push(signed?.signedUrl ?? path);
+      newOnes.push({ url: signed?.signedUrl ?? path, note: "" });
     }
-    update(i, { photos: [...items[i].photos, ...newUrls] });
-    setUploadingIdx(null);
+    setDocPhotos((arr) => [...arr, ...newOnes]);
+    setUploadingPhoto(false);
   }
 
-  function removePhoto(i: number, url: string) {
-    update(i, { photos: items[i].photos.filter((u) => u !== url) });
+  function updatePhotoNote(idx: number, note: string) {
+    setDocPhotos((arr) => arr.map((p, i) => (i === idx ? { ...p, note } : p)));
+  }
+  function removePhoto(idx: number) {
+    setDocPhotos((arr) => arr.filter((_, i) => i !== idx));
   }
 
-  // Compute the same totals the server-side helper computes so the
-  // running total in the form matches the persisted document exactly.
-  const lineTotals = items.map((it) => ({
-    line: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
-    taxable: it.taxable,
-    kind: it.kind,
-  }));
-  const subtotal = lineTotals.reduce((s, l) => s + l.line, 0);
-  const taxableRaw = lineTotals.reduce((s, l) => s + (l.taxable ? l.line : 0), 0);
-  const discountTaxablePortion = subtotal > 0 ? (taxableRaw / subtotal) * (Number(discount) || 0) : 0;
-  const taxBase = Math.max(0, taxableRaw - discountTaxablePortion);
+  function lineTotal(s: SubLine) {
+    return (Number(s.quantity) || 0) * (Number(s.unit_price) || 0);
+  }
+
+  // Mirror the server-side rollup math so the running totals match what
+  // gets persisted exactly.
+  const allSubs = entries.flatMap((e) => {
+    const out: { line: number; taxable: boolean; kind: LineKind }[] = [];
+    if (e.labor.description.trim()) out.push({ line: lineTotal(e.labor), taxable: e.labor.taxable, kind: "labor" });
+    if (e.material.description.trim()) out.push({ line: lineTotal(e.material), taxable: e.material.taxable, kind: "material" });
+    return out;
+  });
+  const subtotal = allSubs.reduce((s, l) => s + l.line, 0);
+  const taxableRaw = allSubs.reduce((s, l) => s + (l.taxable ? l.line : 0), 0);
+  const taxablePortion = subtotal > 0 ? (taxableRaw / subtotal) * (Number(discount) || 0) : 0;
+  const taxBase = Math.max(0, taxableRaw - taxablePortion);
   const taxAmount = taxBase * (Number(taxRate) || 0);
   const total = Math.max(0, subtotal - (Number(discount) || 0)) + taxAmount;
-  const laborTotal = lineTotals.reduce((s, l) => s + (l.kind === "labor" ? l.line : 0), 0);
-  const materialsTotal = lineTotals.reduce((s, l) => s + (l.kind === "material" ? l.line : 0), 0);
+  const laborTotal = allSubs.reduce((s, l) => s + (l.kind === "labor" ? l.line : 0), 0);
+  const materialsTotal = allSubs.reduce((s, l) => s + (l.kind === "material" ? l.line : 0), 0);
   const hasMixedKinds = laborTotal > 0 && materialsTotal > 0;
 
   return (
@@ -134,11 +209,11 @@ export function LineItemEditor({
           initialAddress={initialAddress}
           onClose={() => setMeasuringIdx(null)}
           onConfirm={(sqft) => {
-            const idx = measuringIdx;
-            if (idx !== null && sqft > 0) {
-              update(idx, { quantity: sqft });
-              if (!items[idx].description.trim()) {
-                update(idx, { description: `${sqft.toLocaleString()} sqft area` });
+            const cur = measuringIdx;
+            if (cur && sqft > 0) {
+              updateSub(cur.entry, cur.side, { quantity: sqft });
+              if (!entries[cur.entry][cur.side].description.trim()) {
+                updateSub(cur.entry, cur.side, { description: `${sqft.toLocaleString()} sqft area` });
               }
             }
             setMeasuringIdx(null);
@@ -147,153 +222,120 @@ export function LineItemEditor({
       )}
 
       <div className="space-y-3">
-        {items.map((it, i) => (
-          <div key={i} className="border border-gray-200 rounded-md p-2.5 space-y-2">
-            <div className="grid grid-cols-12 gap-2 items-start">
-              <div className="col-span-12 sm:col-span-5">
-                <input
-                  name="li_description"
-                  value={it.description}
-                  onChange={(e) => update(i, { description: e.target.value })}
-                  placeholder="Description (e.g. House wash)"
-                  className="w-full"
-                />
-                {!!services.length && (
-                  <select
-                    onChange={(e) => { applyService(i, e.target.value); e.target.value = ""; }}
-                    className="w-full mt-1 text-xs"
-                    defaultValue=""
-                  >
-                    <option value="">— Add from catalog —</option>
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} {s.default_price ? `(${formatCurrency(Number(s.default_price))})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="col-span-3 sm:col-span-2">
-                <input
-                  name="li_quantity"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={it.quantity}
-                  onChange={(e) => update(i, { quantity: Number(e.target.value) })}
-                  className="w-full"
-                />
-                <p className="text-[10px] text-gray-500 mt-0.5 text-center">Quantity</p>
-              </div>
-              <div className="col-span-4 sm:col-span-2">
-                <input
-                  name="li_unit_price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={it.unit_price}
-                  onChange={(e) => update(i, { unit_price: Number(e.target.value) })}
-                  className="w-full"
-                />
-                <p className="text-[10px] text-gray-500 mt-0.5 text-center">Amount</p>
-              </div>
-              <div className="col-span-3 sm:col-span-2 text-right pt-2 text-sm font-medium">
-                {formatCurrency((Number(it.quantity) || 0) * (Number(it.unit_price) || 0))}
-              </div>
-              <div className="col-span-2 sm:col-span-1 pt-1 text-right">
-                <button type="button" onClick={() => remove(i)} className="text-gray-400 hover:text-red-600 text-sm">✕</button>
-              </div>
+        {entries.map((entry, i) => (
+          <div key={entry.group} className="border border-gray-200 rounded-md p-2.5 space-y-2">
+            {/* Hidden marker: one per entry so the server knows how many
+                pairs to read. Group id lets us re-pair on edit. */}
+            <input type="hidden" name="li_group" value={entry.group} />
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-semibold text-gray-500">Line {i + 1}</p>
+              <button
+                type="button"
+                onClick={() => removeEntry(i)}
+                className="text-gray-400 hover:text-red-600 text-sm"
+                disabled={entries.length <= 1}
+              >
+                ✕ Remove line
+              </button>
             </div>
 
-            {/* Kind dropdown + per-line tax toggle. We post both as form
-                fields so the server action can parse them positionally
-                alongside the rest of the li_* arrays. */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
-              <label className="flex items-center gap-1.5">
-                <span className="text-gray-500">Type</span>
-                <select
-                  name="li_kind"
-                  value={it.kind}
-                  onChange={(e) => update(i, { kind: e.target.value as LineKind })}
-                  className="text-xs py-1"
-                >
-                  <option value="service">Service</option>
-                  <option value="labor">Labor</option>
-                  <option value="material">Material</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="li_taxable"
-                  value="1"
-                  checked={it.taxable}
-                  onChange={(e) => update(i, { taxable: e.target.checked })}
-                />
-                <span>Charge tax on this line</span>
-              </label>
-              {/* Row-aligned marker so the server can map taxable per row even
-                  when an unchecked box doesn't POST. Always emitted, one per
-                  row, in render order. */}
-              <input
-                type="hidden"
-                name="li_taxable_marker"
-                value={it.taxable ? "checked" : "unchecked"}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <SubLineCard
+                title="Labor"
+                accent="blue"
+                value={entry.labor}
+                services={services.filter((s) => (s.default_kind ?? "service") !== "material")}
+                onChange={(patch) => updateSub(i, "labor", patch)}
+                onPickService={(id) => applyService(i, "labor", id)}
+                onMeasure={() => setMeasuringIdx({ entry: i, side: "labor" })}
+                total={lineTotal(entry.labor)}
+                fieldPrefix="labor"
+              />
+              <SubLineCard
+                title="Material"
+                accent="green"
+                value={entry.material}
+                services={services.filter((s) => (s.default_kind ?? "service") !== "labor")}
+                onChange={(patch) => updateSub(i, "material", patch)}
+                onPickService={(id) => applyService(i, "material", id)}
+                onMeasure={() => setMeasuringIdx({ entry: i, side: "material" })}
+                total={lineTotal(entry.material)}
+                fieldPrefix="material"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="btn-ghost text-xs cursor-pointer">
-                {uploadingIdx === i ? "Uploading…" : "+ Add picture"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  capture="environment"
-                  onChange={(e) => handleFiles(i, e.target.files)}
-                  disabled={uploadingIdx !== null}
-                  className="hidden"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => setMeasuringIdx(i)}
-                className="btn-ghost text-xs"
-              >
-                + Add measurement
-              </button>
-              {it.photos.map((url) => (
-                <div key={url} className="relative group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="w-14 h-14 object-cover rounded border border-gray-200" />
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(i, url)}
-                    className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] w-4 h-4 rounded-full leading-none opacity-0 group-hover:opacity-100"
-                    aria-label="Remove photo"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <input type="hidden" name="li_photos" value={JSON.stringify(it.photos)} />
+            <div className="text-right text-sm font-medium pt-1 border-t border-gray-100">
+              Line total: {formatCurrency(lineTotal(entry.labor) + lineTotal(entry.material))}
             </div>
           </div>
         ))}
-        <button type="button" onClick={add} className="btn-secondary text-sm">+ Add line</button>
-        {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={addEntry} className="btn-secondary text-sm">+ Add line</button>
+          <label className="btn-secondary text-sm cursor-pointer">
+            {uploadingPhoto ? "Uploading…" : "+ Add picture"}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              onChange={(e) => handleDocPhotos(e.target.files)}
+              disabled={uploadingPhoto}
+              className="hidden"
+            />
+          </label>
+        </div>
+        {photoErr && <p className="text-xs text-red-600">{photoErr}</p>}
       </div>
+
+      {docPhotos.length > 0 && (
+        <div className="space-y-2 pt-3 border-t border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700">Pictures ({docPhotos.length})</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {docPhotos.map((p, idx) => (
+              <PhotoCard
+                key={p.url}
+                photo={p}
+                onNote={(note) => updatePhotoNote(idx, note)}
+                onRemove={() => removePhoto(idx)}
+              />
+            ))}
+          </div>
+          {/* Serialize doc photos as parallel arrays for the form action. */}
+          {docPhotos.map((p, idx) => (
+            <span key={`hidden-${idx}`}>
+              <input type="hidden" name="doc_photo_url" value={p.url} />
+              <input type="hidden" name="doc_photo_note" value={p.note} />
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-gray-200">
         <div className="space-y-2">
           <div>
             <label>Discount ($)</label>
-            <input name="discount_amount" type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="w-full" />
+            <input
+              name="discount_amount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={discount}
+              onChange={(e) => setDiscount(Number(e.target.value))}
+              className="w-full"
+            />
           </div>
           <div>
             <label>Tax rate (e.g. 0.0825 for 8.25%)</label>
-            <input name="tax_rate" type="number" step="0.0001" min="0" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="w-full" />
+            <input
+              name="tax_rate"
+              type="number"
+              step="0.0001"
+              min="0"
+              value={taxRate}
+              onChange={(e) => setTaxRate(Number(e.target.value))}
+              className="w-full"
+            />
           </div>
         </div>
         <div className="card-padded">
@@ -305,13 +347,156 @@ export function LineItemEditor({
             </>
           )}
           <Row label="Discount" value={`− ${formatCurrency(discount)}`} />
-          <Row label={`Taxable subtotal`} value={formatCurrency(taxBase)} dim />
+          <Row label="Taxable subtotal" value={formatCurrency(taxBase)} dim />
           <Row label={`Tax (${(taxRate * 100).toFixed(2)}%)`} value={formatCurrency(taxAmount)} />
           <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-bold text-lg">
             <span>Total</span>
             <span>{formatCurrency(total)}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SubLineCard({
+  title,
+  accent,
+  value,
+  services,
+  onChange,
+  onPickService,
+  onMeasure,
+  total,
+  fieldPrefix,
+}: {
+  title: string;
+  accent: "blue" | "green";
+  value: SubLine;
+  services: Service[];
+  onChange: (patch: Partial<SubLine>) => void;
+  onPickService: (id: string) => void;
+  onMeasure: () => void;
+  total: number;
+  fieldPrefix: "labor" | "material";
+}) {
+  const borderTone = accent === "blue" ? "border-blue-200 bg-blue-50/30" : "border-green-200 bg-green-50/30";
+  const labelTone = accent === "blue" ? "text-blue-700" : "text-green-700";
+  return (
+    <div className={`rounded-md border ${borderTone} p-2.5 space-y-2`}>
+      <div className="flex items-center justify-between">
+        <p className={`text-xs font-semibold uppercase tracking-wider ${labelTone}`}>{title}</p>
+        <p className="text-sm font-medium">{formatCurrency(total)}</p>
+      </div>
+      <input
+        name={`${fieldPrefix}_description`}
+        value={value.description}
+        onChange={(e) => onChange({ description: e.target.value })}
+        placeholder={title === "Labor" ? "e.g. House wash" : "e.g. Bleach gallon"}
+        className="w-full text-sm"
+      />
+      {!!services.length && (
+        <select
+          onChange={(e) => { onPickService(e.target.value); e.target.value = ""; }}
+          className="w-full text-xs"
+          defaultValue=""
+        >
+          <option value="">— Add from catalog —</option>
+          {services.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} {s.default_price ? `(${formatCurrency(Number(s.default_price))})` : ""}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <input
+            name={`${fieldPrefix}_quantity`}
+            type="number"
+            step="0.01"
+            min="0"
+            value={value.quantity}
+            onChange={(e) => onChange({ quantity: Number(e.target.value) })}
+            className="w-full text-sm"
+          />
+          <p className="text-[10px] text-gray-500 mt-0.5 text-center">Quantity</p>
+        </div>
+        <div>
+          <input
+            name={`${fieldPrefix}_unit_price`}
+            type="number"
+            step="0.01"
+            min="0"
+            value={value.unit_price}
+            onChange={(e) => onChange({ unit_price: Number(e.target.value) })}
+            className="w-full text-sm"
+          />
+          <p className="text-[10px] text-gray-500 mt-0.5 text-center">Amount</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={value.taxable}
+            onChange={(e) => onChange({ taxable: e.target.checked })}
+          />
+          <span>Tax</span>
+        </label>
+        <input
+          type="hidden"
+          name={`${fieldPrefix}_taxable_marker`}
+          value={value.taxable ? "checked" : "unchecked"}
+        />
+        <button type="button" onClick={onMeasure} className="text-brand-600 hover:underline">
+          + Measure
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PhotoCard({
+  photo,
+  onNote,
+  onRemove,
+}: {
+  photo: DocPhoto;
+  onNote: (n: string) => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(!!photo.note);
+  return (
+    <div className="border border-gray-200 rounded-md p-2 flex gap-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photo.url} alt="" className="w-24 h-24 object-cover rounded border border-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <textarea
+            rows={3}
+            value={photo.note}
+            onChange={(e) => onNote(e.target.value)}
+            onBlur={() => { if (!photo.note.trim()) setEditing(false); }}
+            placeholder="Add a note about this picture…"
+            className="w-full text-xs"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs text-brand-600 hover:underline"
+          >
+            + Add notes
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          className="block mt-1 text-[11px] text-gray-400 hover:text-red-600"
+        >
+          Remove picture
+        </button>
       </div>
     </div>
   );

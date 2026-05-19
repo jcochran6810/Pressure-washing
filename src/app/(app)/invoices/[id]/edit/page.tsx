@@ -12,7 +12,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { supabase, organizationId, organization } = await getSessionAndOrg();
 
-  const [{ data: inv }, { data: customers }, { data: services }] = await Promise.all([
+  const [{ data: inv }, { data: customers }, { data: services }, { data: docPhotos }] = await Promise.all([
     supabase
       .from("invoices")
       .select("*, invoice_line_items(*), customers(id, first_name, last_name, company_name)")
@@ -21,6 +21,13 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       .maybeSingle(),
     supabase.from("customers").select("id, first_name, last_name, company_name").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("services").select("id, name, default_price, default_kind, default_taxable").eq("organization_id", organizationId).eq("active", true).order("name"),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption")
+      .eq("invoice_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
   ]);
 
   if (!inv) notFound();
@@ -34,10 +41,14 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       description: li.description,
       quantity: Number(li.quantity ?? 1),
       unit_price: Number(li.unit_price ?? 0),
-      photos: (li.photo_urls as string[]) ?? [],
       kind: (li.kind as "labor" | "material" | "service" | "other") ?? "service",
       taxable: li.taxable !== false,
+      line_group: (li.line_group as string | null) ?? null,
     }));
+  const initialDocPhotos = (docPhotos ?? []).map((p: any) => ({
+    url: p.url as string,
+    note: (p.caption as string | null) ?? "",
+  }));
 
   const update = updateInvoice.bind(null, id);
 
@@ -73,6 +84,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
           <LineItemEditor
             services={(services as any) ?? []}
             initial={items}
+            initialDocPhotos={initialDocPhotos}
             taxRateInitial={Number((inv as any).tax_rate ?? organization?.tax_rate ?? 0)}
             discountInitial={Number((inv as any).discount_amount ?? 0)}
             organizationId={organizationId}

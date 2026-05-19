@@ -135,6 +135,21 @@ function lineTable(
     </table>`;
 }
 
+function docPhotoBlock(photos?: { url: string; note: string | null }[]) {
+  if (!photos?.length) return "";
+  return `
+    <div style="margin-top:24px;">
+      <h3 style="font-size:14px;margin:0 0 8px;color:#334155;">Pictures</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;">
+        ${photos.map((p) => `
+          <div style="width:240px;border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fff;">
+            <img src="${escapeHtml(p.url)}" alt="" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:4px;" />
+            ${p.note ? `<p style="margin:6px 2px 2px;font-size:11px;color:#475569;line-height:1.4;">${escapeHtml(p.note).replace(/\n/g, "<br/>")}</p>` : ""}
+          </div>`).join("")}
+      </div>
+    </div>`;
+}
+
 function footer(notes?: string | null, terms?: string | null, org?: Org) {
   // Surface tax id on customer-facing docs when present — required by some
   // B2B clients for their own bookkeeping. Format EIN as XX-XXXXXXX.
@@ -179,6 +194,9 @@ export function invoiceHtml(opts: {
   issueDate: string;
   dueDate: string;
   items: LineItem[];
+  // Document-level reference photos with optional per-photo notes. Renders
+  // as a gallery section between the line table and the footer.
+  docPhotos?: { url: string; note: string | null }[];
   subtotal: number;
   discount: number;
   taxRate: number;
@@ -219,6 +237,7 @@ export function invoiceHtml(opts: {
         materialsSubtotal: opts.materialsSubtotal,
         taxableSubtotal: opts.taxableSubtotal,
       }, opts.currency)}
+      ${docPhotoBlock(opts.docPhotos)}
       ${footer(opts.notes, opts.terms, opts.org)}
     </div>`);
 }
@@ -230,6 +249,7 @@ export function estimateHtml(opts: {
   issueDate: string;
   expiresAt: string | null;
   items: LineItem[];
+  docPhotos?: { url: string; note: string | null }[];
   subtotal: number;
   discount: number;
   taxRate: number;
@@ -260,5 +280,6 @@ export function estimateHtml(opts: {
       materialsSubtotal: opts.materialsSubtotal,
       taxableSubtotal: opts.taxableSubtotal,
     }, opts.currency)}
+    ${docPhotoBlock(opts.docPhotos)}
     ${footer(opts.notes, opts.terms, opts.org)}`);
 }
