@@ -31,6 +31,19 @@ const PRESSURE_WASHING: DefaultService[] = [
   { name: "Deck cleaning", default_price: 0.50, pricing_unit: "sq_ft", category: "Exterior cleaning" },
   { name: "Fence cleaning", default_price: 1.25, pricing_unit: "linear_ft", category: "Exterior cleaning" },
   { name: "Gutter brightening", default_price: 1.50, pricing_unit: "linear_ft", category: "Exterior cleaning" },
+  { name: "Concrete sealing", default_price: 0.85, pricing_unit: "sq_ft", category: "Finish" },
+  { name: "Composite deck restoration", default_price: 0.85, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Oxidation removal (vinyl siding)", default_price: 0.45, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Brick / masonry cleaning", default_price: 0.40, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Oil stain removal", default_price: 95, pricing_unit: "flat", category: "Specialty" },
+  { name: "Graffiti removal", default_price: 195, pricing_unit: "flat", category: "Specialty" },
+  { name: "Rust stain removal", default_price: 125, pricing_unit: "flat", category: "Specialty" },
+  { name: "Pool deck cleaning", default_price: 0.35, pricing_unit: "sq_ft", category: "Exterior cleaning" },
+  { name: "Retaining wall cleaning", default_price: 0.40, pricing_unit: "sq_ft", category: "Exterior cleaning" },
+  { name: "Awning / canvas cleaning", default_price: 4, pricing_unit: "linear_ft", category: "Specialty" },
+  { name: "Dumpster pad cleaning (commercial)", default_price: 145, pricing_unit: "flat", category: "Commercial" },
+  { name: "Paver sand reapplication", default_price: 0.95, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Storefront / flatwork (commercial)", default_price: 0.20, pricing_unit: "sq_ft", category: "Commercial" },
 ];
 
 const LAWN_CARE: DefaultService[] = [
@@ -42,6 +55,17 @@ const LAWN_CARE: DefaultService[] = [
   { name: "Mulch installation", default_price: 80, pricing_unit: "cubic_yard", category: "Landscape" },
   { name: "Weed control", default_price: 65, pricing_unit: "flat", category: "Treatment" },
   { name: "Seasonal cleanup", default_price: 175, pricing_unit: "flat", category: "Seasonal" },
+  { name: "Core aeration", default_price: 165, pricing_unit: "flat", category: "Treatment" },
+  { name: "Overseeding", default_price: 125, pricing_unit: "flat", category: "Treatment" },
+  { name: "Dethatching", default_price: 195, pricing_unit: "flat", category: "Treatment" },
+  { name: "Fertilization (single application)", default_price: 75, pricing_unit: "visit", category: "Treatment" },
+  { name: "Fertilization program (4 visits)", default_price: 295, pricing_unit: "flat", category: "Recurring" },
+  { name: "Grub treatment", default_price: 145, pricing_unit: "flat", category: "Treatment" },
+  { name: "Lime application", default_price: 95, pricing_unit: "flat", category: "Treatment" },
+  { name: "Lawn striping / detail mow", default_price: 65, pricing_unit: "visit", category: "Maintenance" },
+  { name: "Bagging clippings", default_price: 25, pricing_unit: "visit", category: "Add-on" },
+  { name: "Spring cleanup", default_price: 245, pricing_unit: "flat", category: "Seasonal" },
+  { name: "Fall cleanup", default_price: 295, pricing_unit: "flat", category: "Seasonal" },
 ];
 
 const LANDSCAPING: DefaultService[] = [
@@ -52,6 +76,16 @@ const LANDSCAPING: DefaultService[] = [
   { name: "Sod installation", default_price: 1.20, pricing_unit: "sq_ft", category: "Install" },
   { name: "Drainage improvement", default_price: 95, pricing_unit: "hour", category: "Install" },
   { name: "Landscape lighting", default_price: 125, pricing_unit: "fixture", category: "Install" },
+  { name: "Paver patio install", default_price: 22, pricing_unit: "sq_ft", category: "Hardscape" },
+  { name: "Retaining wall install", default_price: 45, pricing_unit: "sq_ft", category: "Hardscape" },
+  { name: "Fire pit install", default_price: 1295, pricing_unit: "each", category: "Hardscape" },
+  { name: "Water feature install", default_price: 1995, pricing_unit: "each", category: "Hardscape" },
+  { name: "Tree planting", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "Shrub planting", default_price: 45, pricing_unit: "each", category: "Install" },
+  { name: "Decorative rock / gravel install", default_price: 95, pricing_unit: "cubic_yard", category: "Install" },
+  { name: "Steel / aluminum edging install", default_price: 6.50, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Garden bed redo / refresh", default_price: 15, pricing_unit: "sq_ft", category: "Refresh" },
+  { name: "Erosion control / silt fence", default_price: 5.50, pricing_unit: "linear_ft", category: "Install" },
 ];
 
 const HOUSE_CLEANING: DefaultService[] = [
@@ -63,6 +97,16 @@ const HOUSE_CLEANING: DefaultService[] = [
   { name: "Recurring biweekly cleaning", default_price: 130, pricing_unit: "visit", category: "Recurring" },
   { name: "Airbnb turnover", default_price: 95, pricing_unit: "visit", category: "Short-term rental" },
   { name: "Interior windows", default_price: 65, pricing_unit: "flat", category: "Add-on" },
+  { name: "Oven deep clean", default_price: 85, pricing_unit: "flat", category: "Add-on" },
+  { name: "Refrigerator inside clean", default_price: 65, pricing_unit: "flat", category: "Add-on" },
+  { name: "Baseboard detail", default_price: 75, pricing_unit: "flat", category: "Add-on" },
+  { name: "Ceiling fan detail", default_price: 35, pricing_unit: "each", category: "Add-on" },
+  { name: "Blind cleaning", default_price: 15, pricing_unit: "each", category: "Add-on" },
+  { name: "Cabinet interior cleaning", default_price: 95, pricing_unit: "flat", category: "Add-on" },
+  { name: "Post-construction clean", default_price: 425, pricing_unit: "flat", category: "Specialty" },
+  { name: "Laundry add-on", default_price: 45, pricing_unit: "visit", category: "Add-on" },
+  { name: "Garage cleaning", default_price: 145, pricing_unit: "flat", category: "Specialty" },
+  { name: "Hoarder / heavy soil cleanup", default_price: 145, pricing_unit: "hour", category: "Specialty" },
 ];
 
 const WINDOW_CLEANING: DefaultService[] = [
@@ -72,6 +116,14 @@ const WINDOW_CLEANING: DefaultService[] = [
   { name: "Track cleaning", default_price: 3, pricing_unit: "window", category: "Add-on" },
   { name: "Hard water stain removal", default_price: 25, pricing_unit: "window", category: "Specialty" },
   { name: "Solar panel cleaning", default_price: 12, pricing_unit: "panel", category: "Specialty" },
+  { name: "High-rise / per-story upcharge", default_price: 4, pricing_unit: "window", category: "Specialty" },
+  { name: "Chandelier cleaning", default_price: 145, pricing_unit: "each", category: "Specialty" },
+  { name: "Glass shower door restoration", default_price: 95, pricing_unit: "each", category: "Specialty" },
+  { name: "Storefront cleaning (recurring)", default_price: 45, pricing_unit: "visit", category: "Commercial" },
+  { name: "Skylight cleaning", default_price: 35, pricing_unit: "each", category: "Specialty" },
+  { name: "Post-construction window clean", default_price: 18, pricing_unit: "window", category: "Specialty" },
+  { name: "Mirror cleaning", default_price: 12, pricing_unit: "each", category: "Add-on" },
+  { name: "Gutter face / fascia wipe", default_price: 1.25, pricing_unit: "linear_ft", category: "Add-on" },
 ];
 
 const GUTTER_CLEANING: DefaultService[] = [
@@ -80,6 +132,14 @@ const GUTTER_CLEANING: DefaultService[] = [
   { name: "Gutter brightening", default_price: 1.75, pricing_unit: "linear_ft", category: "Specialty" },
   { name: "Gutter guard cleaning", default_price: 2.25, pricing_unit: "linear_ft", category: "Cleaning" },
   { name: "Gutter guard installation", default_price: 9, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Gutter realignment / re-pitch", default_price: 8, pricing_unit: "linear_ft", category: "Repair" },
+  { name: "Gutter repair (per section)", default_price: 95, pricing_unit: "each", category: "Repair" },
+  { name: "Downspout extension install", default_price: 65, pricing_unit: "each", category: "Install" },
+  { name: "Splash block install", default_price: 35, pricing_unit: "each", category: "Install" },
+  { name: "Hidden hanger install", default_price: 6, pricing_unit: "each", category: "Repair" },
+  { name: "Micro-mesh guard install", default_price: 11, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Seamless gutter install", default_price: 13, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Two-story upcharge", default_price: 0.50, pricing_unit: "linear_ft", category: "Specialty" },
 ];
 
 const PAINTING: DefaultService[] = [
@@ -91,6 +151,16 @@ const PAINTING: DefaultService[] = [
   { name: "Fence staining", default_price: 2.50, pricing_unit: "linear_ft", category: "Stain" },
   { name: "Deck staining", default_price: 1.75, pricing_unit: "sq_ft", category: "Stain" },
   { name: "Drywall patch and paint", default_price: 95, pricing_unit: "flat", category: "Repair" },
+  { name: "Ceiling painting", default_price: 1.95, pricing_unit: "sq_ft", category: "Interior" },
+  { name: "Accent wall", default_price: 195, pricing_unit: "flat", category: "Interior" },
+  { name: "Garage floor paint", default_price: 4.50, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Popcorn ceiling removal", default_price: 2.25, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Wallpaper removal", default_price: 2.50, pricing_unit: "sq_ft", category: "Prep" },
+  { name: "Color consultation", default_price: 95, pricing_unit: "flat", category: "Consult" },
+  { name: "Pressure-wash prep (exterior)", default_price: 0.20, pricing_unit: "sq_ft", category: "Prep" },
+  { name: "Deck refinish (sand + stain)", default_price: 3.50, pricing_unit: "sq_ft", category: "Stain" },
+  { name: "Epoxy + clearcoat detail", default_price: 245, pricing_unit: "flat", category: "Detail" },
+  { name: "Touch-up service visit", default_price: 145, pricing_unit: "flat", category: "Service" },
 ];
 
 const HANDYMAN: DefaultService[] = [
@@ -102,6 +172,16 @@ const HANDYMAN: DefaultService[] = [
   { name: "Fixture replacement", default_price: 95, pricing_unit: "each", category: "Install" },
   { name: "Caulking", default_price: 75, pricing_unit: "flat", category: "Detail" },
   { name: "Picture/mirror hanging", default_price: 35, pricing_unit: "each", category: "Detail" },
+  { name: "Door hardware swap", default_price: 65, pricing_unit: "each", category: "Install" },
+  { name: "Weather stripping install", default_price: 75, pricing_unit: "flat", category: "Install" },
+  { name: "Smoke detector replacement", default_price: 45, pricing_unit: "each", category: "Install" },
+  { name: "Mailbox install", default_price: 125, pricing_unit: "each", category: "Install" },
+  { name: "Blinds / shade install", default_price: 55, pricing_unit: "each", category: "Install" },
+  { name: "Toilet replacement", default_price: 295, pricing_unit: "each", category: "Install" },
+  { name: "Light bulb refresh visit", default_price: 65, pricing_unit: "flat", category: "Service" },
+  { name: "Drawer / cabinet repair", default_price: 65, pricing_unit: "each", category: "Repair" },
+  { name: "Childproofing / aging-in-place mods", default_price: 95, pricing_unit: "hour", category: "Specialty" },
+  { name: "Pre-listing fix list", default_price: 95, pricing_unit: "hour", category: "Specialty" },
 ];
 
 const HVAC: DefaultService[] = [
@@ -113,6 +193,17 @@ const HVAC: DefaultService[] = [
   { name: "Thermostat installation", default_price: 195, pricing_unit: "flat", category: "Install" },
   { name: "Capacitor replacement", default_price: 225, pricing_unit: "flat", category: "Repair" },
   { name: "Coil cleaning", default_price: 295, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Refrigerant recharge", default_price: 295, pricing_unit: "flat", category: "Repair" },
+  { name: "Blower motor replacement", default_price: 595, pricing_unit: "flat", category: "Repair" },
+  { name: "Condensate line clearing", default_price: 165, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Condenser cleaning", default_price: 195, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Mini-split install (per head)", default_price: 2495, pricing_unit: "each", category: "Install" },
+  { name: "Heat pump install", default_price: 6995, pricing_unit: "flat", category: "Install" },
+  { name: "Furnace install", default_price: 4495, pricing_unit: "flat", category: "Install" },
+  { name: "AC unit install (split)", default_price: 5495, pricing_unit: "flat", category: "Install" },
+  { name: "UV sanitizer install", default_price: 595, pricing_unit: "each", category: "Install" },
+  { name: "Ductwork cleaning", default_price: 595, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Annual service plan", default_price: 199, pricing_unit: "flat", category: "Recurring" },
 ];
 
 const PLUMBING: DefaultService[] = [
@@ -124,6 +215,17 @@ const PLUMBING: DefaultService[] = [
   { name: "Water heater repair", default_price: 350, pricing_unit: "flat", category: "Repair" },
   { name: "Garbage disposal replacement", default_price: 275, pricing_unit: "flat", category: "Install" },
   { name: "Hose bib repair", default_price: 165, pricing_unit: "flat", category: "Repair" },
+  { name: "Sewer camera inspection", default_price: 295, pricing_unit: "flat", category: "Inspection" },
+  { name: "Hydro-jetting", default_price: 495, pricing_unit: "flat", category: "Repair" },
+  { name: "Water heater replacement (tank)", default_price: 1495, pricing_unit: "each", category: "Install" },
+  { name: "Tankless water heater install", default_price: 2995, pricing_unit: "each", category: "Install" },
+  { name: "Water softener install", default_price: 1495, pricing_unit: "each", category: "Install" },
+  { name: "Sump pump install", default_price: 595, pricing_unit: "each", category: "Install" },
+  { name: "Pressure regulator replacement", default_price: 425, pricing_unit: "flat", category: "Repair" },
+  { name: "Gas line install (per ft)", default_price: 28, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Slab leak detection", default_price: 395, pricing_unit: "flat", category: "Inspection" },
+  { name: "Re-piping (per fixture estimate)", default_price: 595, pricing_unit: "each", category: "Install" },
+  { name: "Backflow preventer test", default_price: 95, pricing_unit: "flat", category: "Inspection" },
 ];
 
 const ELECTRICAL: DefaultService[] = [
@@ -135,6 +237,17 @@ const ELECTRICAL: DefaultService[] = [
   { name: "Breaker replacement", default_price: 195, pricing_unit: "each", category: "Repair" },
   { name: "GFCI install", default_price: 145, pricing_unit: "each", category: "Install" },
   { name: "Smart switch install", default_price: 175, pricing_unit: "each", category: "Install" },
+  { name: "Panel upgrade (200A)", default_price: 2495, pricing_unit: "flat", category: "Install" },
+  { name: "Sub-panel install", default_price: 1495, pricing_unit: "flat", category: "Install" },
+  { name: "EV charger install (Level 2)", default_price: 895, pricing_unit: "each", category: "Install" },
+  { name: "Generator transfer switch install", default_price: 1495, pricing_unit: "flat", category: "Install" },
+  { name: "Whole-home surge protector", default_price: 495, pricing_unit: "each", category: "Install" },
+  { name: "Recessed lighting install", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "Under-cabinet lighting", default_price: 295, pricing_unit: "flat", category: "Install" },
+  { name: "Doorbell / camera install", default_price: 175, pricing_unit: "each", category: "Install" },
+  { name: "Hardwired smoke + CO detector", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "Attic fan install", default_price: 495, pricing_unit: "each", category: "Install" },
+  { name: "Outdoor outlet install", default_price: 195, pricing_unit: "each", category: "Install" },
 ];
 
 const POOL_SERVICE: DefaultService[] = [
@@ -146,6 +259,15 @@ const POOL_SERVICE: DefaultService[] = [
   { name: "Salt cell cleaning", default_price: 175, pricing_unit: "flat", category: "Maintenance" },
   { name: "Pool opening", default_price: 295, pricing_unit: "flat", category: "Seasonal" },
   { name: "Pool closing", default_price: 295, pricing_unit: "flat", category: "Seasonal" },
+  { name: "Leak detection", default_price: 295, pricing_unit: "flat", category: "Diagnostic" },
+  { name: "Tile cleaning (waterline)", default_price: 250, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Pool motor replacement", default_price: 595, pricing_unit: "flat", category: "Repair" },
+  { name: "Heater repair", default_price: 425, pricing_unit: "flat", category: "Repair" },
+  { name: "Saltwater conversion", default_price: 1495, pricing_unit: "flat", category: "Install" },
+  { name: "Automation install (smart controller)", default_price: 1295, pricing_unit: "flat", category: "Install" },
+  { name: "Cover install / replacement", default_price: 595, pricing_unit: "each", category: "Install" },
+  { name: "Acid wash (drain + scrub)", default_price: 695, pricing_unit: "flat", category: "Restoration" },
+  { name: "Pool deck resurfacing referral", default_price: 0, pricing_unit: "flat", category: "Consult" },
 ];
 
 const PEST_CONTROL: DefaultService[] = [
@@ -157,6 +279,16 @@ const PEST_CONTROL: DefaultService[] = [
   { name: "Rodent inspection", default_price: 125, pricing_unit: "flat", category: "Specialty" },
   { name: "Mosquito treatment", default_price: 95, pricing_unit: "visit", category: "Recurring" },
   { name: "Termite inspection", default_price: 175, pricing_unit: "flat", category: "Specialty" },
+  { name: "Termite treatment", default_price: 1495, pricing_unit: "flat", category: "Specialty" },
+  { name: "Bed bug treatment", default_price: 595, pricing_unit: "flat", category: "Specialty" },
+  { name: "Flea treatment (interior)", default_price: 245, pricing_unit: "flat", category: "Specialty" },
+  { name: "Tick treatment (yard)", default_price: 145, pricing_unit: "visit", category: "Recurring" },
+  { name: "Scorpion treatment", default_price: 195, pricing_unit: "flat", category: "Specialty" },
+  { name: "Spider treatment", default_price: 145, pricing_unit: "flat", category: "Specialty" },
+  { name: "Attic exclusion", default_price: 395, pricing_unit: "flat", category: "Specialty" },
+  { name: "Crawl space treatment", default_price: 395, pricing_unit: "flat", category: "Specialty" },
+  { name: "Wildlife trapping (per animal)", default_price: 195, pricing_unit: "each", category: "Specialty" },
+  { name: "Annual termite renewal", default_price: 195, pricing_unit: "flat", category: "Recurring" },
 ];
 
 const JUNK_REMOVAL: DefaultService[] = [
@@ -168,6 +300,16 @@ const JUNK_REMOVAL: DefaultService[] = [
   { name: "Construction debris removal", default_price: 295, pricing_unit: "load", category: "Pickup" },
   { name: "Full truckload", default_price: 595, pricing_unit: "load", category: "Pickup" },
   { name: "Quarter truckload", default_price: 195, pricing_unit: "load", category: "Pickup" },
+  { name: "Hot tub removal", default_price: 495, pricing_unit: "each", category: "Specialty" },
+  { name: "Mattress disposal", default_price: 95, pricing_unit: "each", category: "Pickup" },
+  { name: "Piano removal", default_price: 395, pricing_unit: "each", category: "Specialty" },
+  { name: "Swing set / playset removal", default_price: 395, pricing_unit: "each", category: "Specialty" },
+  { name: "Tire disposal", default_price: 18, pricing_unit: "each", category: "Pickup" },
+  { name: "Electronics recycling", default_price: 35, pricing_unit: "each", category: "Pickup" },
+  { name: "Donation drop-off run", default_price: 145, pricing_unit: "flat", category: "Add-on" },
+  { name: "Hoarder cleanout", default_price: 145, pricing_unit: "hour", category: "Specialty" },
+  { name: "Estate cleanout", default_price: 145, pricing_unit: "hour", category: "Specialty" },
+  { name: "Same-day rush surcharge", default_price: 95, pricing_unit: "flat", category: "Add-on" },
 ];
 
 const CARPET_CLEANING: DefaultService[] = [
@@ -177,6 +319,15 @@ const CARPET_CLEANING: DefaultService[] = [
   { name: "Stain treatment", default_price: 35, pricing_unit: "flat", category: "Add-on" },
   { name: "Pet odor treatment", default_price: 75, pricing_unit: "room", category: "Add-on" },
   { name: "Tile and grout cleaning", default_price: 0.95, pricing_unit: "sq_ft", category: "Cleaning" },
+  { name: "Tile and grout sealing", default_price: 0.75, pricing_unit: "sq_ft", category: "Finish" },
+  { name: "Mattress cleaning", default_price: 95, pricing_unit: "each", category: "Cleaning" },
+  { name: "Area rug pickup + delivery", default_price: 65, pricing_unit: "flat", category: "Add-on" },
+  { name: "Scotchgard protection", default_price: 0.20, pricing_unit: "sq_ft", category: "Add-on" },
+  { name: "Anti-allergen treatment", default_price: 95, pricing_unit: "flat", category: "Add-on" },
+  { name: "Water extraction (per room)", default_price: 145, pricing_unit: "room", category: "Restoration" },
+  { name: "Auto / RV interior detail", default_price: 165, pricing_unit: "each", category: "Specialty" },
+  { name: "Rotary scrub / heavy traffic restoration", default_price: 145, pricing_unit: "room", category: "Specialty" },
+  { name: "Commercial sq-ft rate", default_price: 0.35, pricing_unit: "sq_ft", category: "Commercial" },
 ];
 
 const MOBILE_DETAILING: DefaultService[] = [
@@ -188,6 +339,17 @@ const MOBILE_DETAILING: DefaultService[] = [
   { name: "Engine bay cleaning", default_price: 75, pricing_unit: "each", category: "Add-on" },
   { name: "Headlight restoration", default_price: 95, pricing_unit: "each", category: "Specialty" },
   { name: "Pet hair removal", default_price: 65, pricing_unit: "each", category: "Add-on" },
+  { name: "Clay bar treatment", default_price: 85, pricing_unit: "each", category: "Add-on" },
+  { name: "1-step paint correction", default_price: 295, pricing_unit: "each", category: "Specialty" },
+  { name: "2-step paint correction", default_price: 595, pricing_unit: "each", category: "Specialty" },
+  { name: "Ceramic coating (1 year)", default_price: 495, pricing_unit: "each", category: "Specialty" },
+  { name: "Ceramic coating (multi-year)", default_price: 1295, pricing_unit: "each", category: "Specialty" },
+  { name: "Leather conditioning", default_price: 75, pricing_unit: "each", category: "Add-on" },
+  { name: "Boat detail (per ft)", default_price: 22, pricing_unit: "linear_ft", category: "Specialty" },
+  { name: "RV / motorhome detail", default_price: 595, pricing_unit: "each", category: "Specialty" },
+  { name: "Motorcycle detail", default_price: 145, pricing_unit: "each", category: "Specialty" },
+  { name: "Fleet rate (per vehicle)", default_price: 65, pricing_unit: "each", category: "Commercial" },
+  { name: "Mobile fee / travel", default_price: 25, pricing_unit: "flat", category: "Add-on" },
 ];
 
 const ROOFING: DefaultService[] = [
@@ -197,6 +359,18 @@ const ROOFING: DefaultService[] = [
   { name: "Shingle replacement", default_price: 195, pricing_unit: "square", category: "Repair" },
   { name: "Storm damage documentation", default_price: 145, pricing_unit: "flat", category: "Inspection" },
   { name: "Emergency tarp", default_price: 395, pricing_unit: "flat", category: "Emergency" },
+  { name: "Full roof replacement (asphalt)", default_price: 425, pricing_unit: "square", category: "Install" },
+  { name: "Metal roof install", default_price: 950, pricing_unit: "square", category: "Install" },
+  { name: "TPO / flat roof install (commercial)", default_price: 7.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Flashing repair", default_price: 295, pricing_unit: "flat", category: "Repair" },
+  { name: "Ridge vent install", default_price: 12, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Attic ventilation upgrade", default_price: 495, pricing_unit: "flat", category: "Install" },
+  { name: "Skylight install / replacement", default_price: 1295, pricing_unit: "each", category: "Install" },
+  { name: "Skylight flashing repair", default_price: 295, pricing_unit: "each", category: "Repair" },
+  { name: "Ice dam removal", default_price: 295, pricing_unit: "hour", category: "Emergency" },
+  { name: "Soffit / fascia repair", default_price: 18, pricing_unit: "linear_ft", category: "Repair" },
+  { name: "Roof soft-wash (algae / moss)", default_price: 0.45, pricing_unit: "sq_ft", category: "Maintenance" },
+  { name: "Solar panel removal / re-set for re-roof", default_price: 125, pricing_unit: "panel", category: "Specialty" },
 ];
 
 const APPLIANCE_REPAIR: DefaultService[] = [
@@ -207,6 +381,13 @@ const APPLIANCE_REPAIR: DefaultService[] = [
   { name: "Dishwasher repair", default_price: 245, pricing_unit: "flat", category: "Repair" },
   { name: "Oven/stove repair", default_price: 275, pricing_unit: "flat", category: "Repair" },
   { name: "Garbage disposal replacement", default_price: 275, pricing_unit: "flat", category: "Install" },
+  { name: "Ice maker repair", default_price: 245, pricing_unit: "flat", category: "Repair" },
+  { name: "Microwave repair", default_price: 195, pricing_unit: "flat", category: "Repair" },
+  { name: "Freezer repair", default_price: 295, pricing_unit: "flat", category: "Repair" },
+  { name: "Range hood install", default_price: 295, pricing_unit: "flat", category: "Install" },
+  { name: "Wine cooler / mini-fridge repair", default_price: 245, pricing_unit: "flat", category: "Repair" },
+  { name: "Pre-purchase appliance inspection", default_price: 145, pricing_unit: "flat", category: "Inspection" },
+  { name: "Warranty / parts-only swap", default_price: 145, pricing_unit: "flat", category: "Labor" },
 ];
 
 const DRYER_VENT: DefaultService[] = [
@@ -215,6 +396,12 @@ const DRYER_VENT: DefaultService[] = [
   { name: "Bird nest removal", default_price: 125, pricing_unit: "flat", category: "Specialty" },
   { name: "Booster fan cleaning", default_price: 195, pricing_unit: "flat", category: "Specialty" },
   { name: "Dryer duct repair", default_price: 245, pricing_unit: "flat", category: "Repair" },
+  { name: "Lint screen housing replacement", default_price: 95, pricing_unit: "flat", category: "Repair" },
+  { name: "Transition hose replacement", default_price: 65, pricing_unit: "flat", category: "Repair" },
+  { name: "Roof termination cleaning", default_price: 195, pricing_unit: "flat", category: "Specialty" },
+  { name: "Recessed dryer box install", default_price: 245, pricing_unit: "flat", category: "Install" },
+  { name: "Multi-unit / property manager rate", default_price: 95, pricing_unit: "each", category: "Commercial" },
+  { name: "Annual cleaning plan", default_price: 125, pricing_unit: "flat", category: "Recurring" },
 ];
 
 const HOLIDAY_LIGHTS: DefaultService[] = [
@@ -224,6 +411,13 @@ const HOLIDAY_LIGHTS: DefaultService[] = [
   { name: "Tree wrapping", default_price: 95, pricing_unit: "each", category: "Install" },
   { name: "Wreath/garland install", default_price: 65, pricing_unit: "each", category: "Install" },
   { name: "Service call for outage", default_price: 95, pricing_unit: "flat", category: "Service" },
+  { name: "Roof line install (C9)", default_price: 11, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Bushes / hedges wrap", default_price: 45, pricing_unit: "each", category: "Install" },
+  { name: "Mega tree install (16+ ft)", default_price: 495, pricing_unit: "each", category: "Install" },
+  { name: "Animated / programmable display", default_price: 295, pricing_unit: "flat", category: "Add-on" },
+  { name: "Mid-season service call", default_price: 95, pricing_unit: "flat", category: "Service" },
+  { name: "Takedown + storage combo", default_price: 145, pricing_unit: "flat", category: "Add-on" },
+  { name: "Commercial / HOA package", default_price: 1495, pricing_unit: "flat", category: "Commercial" },
 ];
 
 const GENERAL_HOME: DefaultService[] = [
@@ -231,6 +425,11 @@ const GENERAL_HOME: DefaultService[] = [
   { name: "Hourly labor", default_price: 75, pricing_unit: "hour", category: "Labor" },
   { name: "General maintenance visit", default_price: 195, pricing_unit: "visit", category: "Maintenance" },
   { name: "Estimate / consultation", default_price: 0, pricing_unit: "flat", category: "Estimate" },
+  { name: "Walk-through inspection", default_price: 145, pricing_unit: "flat", category: "Inspection" },
+  { name: "Project quoting", default_price: 95, pricing_unit: "hour", category: "Consult" },
+  { name: "Pre-listing prep package", default_price: 595, pricing_unit: "flat", category: "Specialty" },
+  { name: "Light renovation labor", default_price: 95, pricing_unit: "hour", category: "Labor" },
+  { name: "Travel / mobile fee", default_price: 45, pricing_unit: "flat", category: "Add-on" },
 ];
 
 const TREE_SERVICE: DefaultService[] = [
@@ -243,6 +442,14 @@ const TREE_SERVICE: DefaultService[] = [
   { name: "Emergency / storm response", default_price: 195, pricing_unit: "hour", category: "Emergency" },
   { name: "Tree inspection / arborist consult", default_price: 175, pricing_unit: "flat", category: "Consult" },
   { name: "Brush hauling", default_price: 95, pricing_unit: "load", category: "Cleanup" },
+  { name: "Cabling / bracing", default_price: 295, pricing_unit: "each", category: "Specialty" },
+  { name: "Deep root fertilization", default_price: 145, pricing_unit: "each", category: "Treatment" },
+  { name: "Pest / disease injection", default_price: 195, pricing_unit: "each", category: "Treatment" },
+  { name: "Lot clearing (per hour)", default_price: 245, pricing_unit: "hour", category: "Specialty" },
+  { name: "Crane day rate", default_price: 1995, pricing_unit: "flat", category: "Specialty" },
+  { name: "Log splitting", default_price: 95, pricing_unit: "hour", category: "Cleanup" },
+  { name: "Firewood delivery (per cord)", default_price: 245, pricing_unit: "each", category: "Add-on" },
+  { name: "Crown raising / thinning", default_price: 395, pricing_unit: "each", category: "Trimming" },
 ];
 
 const FENCING: DefaultService[] = [
@@ -254,6 +461,13 @@ const FENCING: DefaultService[] = [
   { name: "Fence repair", default_price: 95, pricing_unit: "hour", category: "Repair" },
   { name: "Post replacement", default_price: 145, pricing_unit: "each", category: "Repair" },
   { name: "Fence staining / sealing", default_price: 2.50, pricing_unit: "linear_ft", category: "Finish" },
+  { name: "Fence pressure wash", default_price: 1.25, pricing_unit: "linear_ft", category: "Maintenance" },
+  { name: "Privacy slat install (chain link)", default_price: 6, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Automatic gate opener install", default_price: 1295, pricing_unit: "each", category: "Install" },
+  { name: "Fence demolition + haul", default_price: 4.50, pricing_unit: "linear_ft", category: "Removal" },
+  { name: "Post cap / decorative upgrade", default_price: 18, pricing_unit: "each", category: "Add-on" },
+  { name: "Dig safe / call-before-you-dig coordination", default_price: 75, pricing_unit: "flat", category: "Add-on" },
+  { name: "Dog ear pickets replacement", default_price: 8, pricing_unit: "each", category: "Repair" },
 ];
 
 const SNOW_REMOVAL: DefaultService[] = [
@@ -264,6 +478,13 @@ const SNOW_REMOVAL: DefaultService[] = [
   { name: "Commercial lot plow", default_price: 195, pricing_unit: "visit", category: "Plowing" },
   { name: "Per-inch billing", default_price: 35, pricing_unit: "visit", category: "Plowing" },
   { name: "Roof snow removal", default_price: 295, pricing_unit: "flat", category: "Specialty" },
+  { name: "Sand spreading", default_price: 55, pricing_unit: "visit", category: "Treatment" },
+  { name: "Calcium chloride treatment", default_price: 65, pricing_unit: "visit", category: "Treatment" },
+  { name: "Walkway snow blowing", default_price: 35, pricing_unit: "visit", category: "Shoveling" },
+  { name: "Ice dam removal", default_price: 245, pricing_unit: "hour", category: "Emergency" },
+  { name: "After-hours emergency call-out", default_price: 195, pricing_unit: "visit", category: "Emergency" },
+  { name: "Commercial seasonal contract", default_price: 2495, pricing_unit: "month", category: "Recurring" },
+  { name: "Storm event mobilization fee", default_price: 95, pricing_unit: "visit", category: "Add-on" },
 ];
 
 const GARAGE_DOOR: DefaultService[] = [
@@ -276,6 +497,14 @@ const GARAGE_DOOR: DefaultService[] = [
   { name: "Panel replacement", default_price: 395, pricing_unit: "each", category: "Repair" },
   { name: "New door install", default_price: 1495, pricing_unit: "each", category: "Install" },
   { name: "Tune-up / safety inspection", default_price: 125, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Keypad install", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "Smart Wi-Fi opener install", default_price: 595, pricing_unit: "each", category: "Install" },
+  { name: "Weather seal / bottom seal replacement", default_price: 125, pricing_unit: "flat", category: "Repair" },
+  { name: "Jamb / side seal install", default_price: 175, pricing_unit: "flat", category: "Install" },
+  { name: "Lubrication service visit", default_price: 89, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Hurricane reinforcement kit", default_price: 595, pricing_unit: "each", category: "Specialty" },
+  { name: "Insulated panel upgrade", default_price: 95, pricing_unit: "each", category: "Install" },
+  { name: "After-hours emergency call", default_price: 195, pricing_unit: "flat", category: "Emergency" },
 ];
 
 const CONCRETE: DefaultService[] = [
@@ -288,6 +517,13 @@ const CONCRETE: DefaultService[] = [
   { name: "Brick / paver install", default_price: 18, pricing_unit: "sq_ft", category: "Install" },
   { name: "Mortar / tuckpointing repair", default_price: 12, pricing_unit: "sq_ft", category: "Repair" },
   { name: "Demolition + haul", default_price: 4.50, pricing_unit: "sq_ft", category: "Removal" },
+  { name: "Exposed aggregate finish", default_price: 13.50, pricing_unit: "sq_ft", category: "Finish" },
+  { name: "Mudjacking / slab leveling", default_price: 6.50, pricing_unit: "sq_ft", category: "Repair" },
+  { name: "Polyurethane foam leveling", default_price: 8.50, pricing_unit: "sq_ft", category: "Repair" },
+  { name: "Expansion joint install / resealing", default_price: 4.50, pricing_unit: "linear_ft", category: "Repair" },
+  { name: "Decorative saw-cut scoring", default_price: 2.50, pricing_unit: "linear_ft", category: "Finish" },
+  { name: "Concrete steps / stoop pour", default_price: 195, pricing_unit: "each", category: "Install" },
+  { name: "Footings (per linear foot)", default_price: 28, pricing_unit: "linear_ft", category: "Install" },
 ];
 
 const IRRIGATION: DefaultService[] = [
@@ -300,6 +536,13 @@ const IRRIGATION: DefaultService[] = [
   { name: "Spring start-up", default_price: 110, pricing_unit: "flat", category: "Seasonal" },
   { name: "Controller upgrade (smart)", default_price: 395, pricing_unit: "flat", category: "Install" },
   { name: "Drip line install", default_price: 3.50, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Rain sensor install", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "Master valve install", default_price: 295, pricing_unit: "each", category: "Install" },
+  { name: "Pump install (booster)", default_price: 895, pricing_unit: "each", category: "Install" },
+  { name: "Drip emitter cleaning", default_price: 75, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Manifold rebuild", default_price: 395, pricing_unit: "each", category: "Repair" },
+  { name: "Mid-season tune-up", default_price: 145, pricing_unit: "flat", category: "Maintenance" },
+  { name: "Decoder repair (commercial)", default_price: 245, pricing_unit: "each", category: "Repair" },
 ];
 
 const EPOXY_FLOORING: DefaultService[] = [
@@ -311,6 +554,14 @@ const EPOXY_FLOORING: DefaultService[] = [
   { name: "Polished concrete", default_price: 6.50, pricing_unit: "sq_ft", category: "Finish" },
   { name: "Concrete prep / grinding", default_price: 2.00, pricing_unit: "sq_ft", category: "Prep" },
   { name: "Crack / joint repair", default_price: 8, pricing_unit: "linear_ft", category: "Prep" },
+  { name: "Shop / warehouse floor coating", default_price: 5.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Basement floor coating", default_price: 5.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Commercial kitchen coating (USDA / FDA)", default_price: 11.50, pricing_unit: "sq_ft", category: "Specialty" },
+  { name: "Anti-slip additive", default_price: 1.00, pricing_unit: "sq_ft", category: "Add-on" },
+  { name: "Color flake premium upgrade", default_price: 1.50, pricing_unit: "sq_ft", category: "Add-on" },
+  { name: "Top-coat refresh", default_price: 3.00, pricing_unit: "sq_ft", category: "Maintenance" },
+  { name: "Line striping / parking layout", default_price: 1.25, pricing_unit: "linear_ft", category: "Specialty" },
+  { name: "Custom logo inlay", default_price: 495, pricing_unit: "each", category: "Specialty" },
 ];
 
 const SOLAR_INSTALL: DefaultService[] = [
@@ -323,6 +574,13 @@ const SOLAR_INSTALL: DefaultService[] = [
   { name: "Panel cleaning", default_price: 12, pricing_unit: "panel", category: "Maintenance" },
   { name: "Monitoring system setup", default_price: 395, pricing_unit: "flat", category: "Install" },
   { name: "Repair service call", default_price: 195, pricing_unit: "flat", category: "Service call" },
+  { name: "Critter guard install", default_price: 18, pricing_unit: "linear_ft", category: "Add-on" },
+  { name: "Ground mount install", default_price: 1495, pricing_unit: "flat", category: "Install" },
+  { name: "Micro-inverter retrofit", default_price: 145, pricing_unit: "each", category: "Install" },
+  { name: "System uninstall + re-install for re-roof", default_price: 245, pricing_unit: "panel", category: "Specialty" },
+  { name: "Re-activation / re-commissioning", default_price: 495, pricing_unit: "flat", category: "Service" },
+  { name: "Soiling / production audit", default_price: 245, pricing_unit: "flat", category: "Inspection" },
+  { name: "EV charger pairing", default_price: 895, pricing_unit: "each", category: "Install" },
 ];
 
 const CHIMNEY_SWEEP: DefaultService[] = [
@@ -334,6 +592,14 @@ const CHIMNEY_SWEEP: DefaultService[] = [
   { name: "Flue liner install", default_price: 1995, pricing_unit: "flat", category: "Install" },
   { name: "Damper repair / replacement", default_price: 395, pricing_unit: "flat", category: "Repair" },
   { name: "Animal removal", default_price: 195, pricing_unit: "flat", category: "Specialty" },
+  { name: "Dryer chimney sweep", default_price: 195, pricing_unit: "flat", category: "Cleaning" },
+  { name: "Smoke chamber parging", default_price: 595, pricing_unit: "flat", category: "Repair" },
+  { name: "Video inspection (NFPA 211)", default_price: 195, pricing_unit: "flat", category: "Inspection" },
+  { name: "Waterproofing (sealer)", default_price: 295, pricing_unit: "flat", category: "Specialty" },
+  { name: "Crown coat application", default_price: 245, pricing_unit: "flat", category: "Repair" },
+  { name: "Top-mount damper install", default_price: 425, pricing_unit: "each", category: "Install" },
+  { name: "Glass door install / replacement", default_price: 495, pricing_unit: "each", category: "Install" },
+  { name: "Masonry restoration (per ft)", default_price: 95, pricing_unit: "linear_ft", category: "Repair" },
 ];
 
 // Per-trade custom-field templates. These live on the job (most common) by

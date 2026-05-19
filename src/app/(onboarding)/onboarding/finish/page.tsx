@@ -99,6 +99,14 @@ export default async function FinishStep() {
           You can change everything from Settings and the Services page.
         </p>
 
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 mb-5">
+          <strong>Heads up:</strong> these are starter defaults. After onboarding,
+          head to the <strong>Services</strong> tab in the sidebar to rename items,
+          update prices, change billing units, or remove anything you don&rsquo;t offer.
+          The same prices show up in the &ldquo;Add from catalog&rdquo; dropdown on every
+          new estimate and invoice.
+        </div>
+
         <div className="space-y-4 mb-6">
           <div className="rounded-lg border p-4">
             <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-2">Trades</p>
