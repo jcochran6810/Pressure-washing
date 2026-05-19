@@ -1,0 +1,89 @@
+name: Weekly off-site DB backup
+
+# Runs every Sunday at 03:00 UTC. Dumps the Supabase database, encrypts the
+# dump with a long key you control, and uploads to Backblaze B2 (or any S3-
+# compatible store via rclone).
+#
+# Required repository secrets:
+#   SUPABASE_DB_URL          postgresql://...?sslmode=require  (Supabase → Settings → Database → Connection string)
+#   BACKUP_ENCRYPTION_KEY    a long random key — KEEP A COPY IN 1PASSWORD. Without it you can't restore.
+#   B2_KEY_ID                Backblaze App Key ID
+#   B2_APP_KEY               Backblaze App Key
+#   B2_BUCKET                Backblaze bucket name (e.g. suds-db-backups)
+
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sun 03:00 UTC
+  workflow_dispatch:    # also runnable manually from the Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install postgres client + b2 CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client curl
+          pip install --user b2 || pip install b2
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          DATE=$(date +%Y-%m-%d)
+          FILE="suds-${DATE}.sql.gz"
+          echo "Dumping..."
+          pg_dump --no-owner --no-acl --clean --if-exists "$SUPABASE_DB_URL" | gzip > "$FILE"
+          echo "Size: $(du -h "$FILE" | cut -f1)"
+          echo "FILE=$FILE" >> $GITHUB_ENV
+
+      - name: Encrypt
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          # AES-256 with PBKDF2 key derivation; portable across openssl 1.1+
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in "$FILE" \
+            -out "${FILE}.enc" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          rm "$FILE"
+          ls -lh "${FILE}.enc"
+          echo "ENCRYPTED=${FILE}.enc" >> $GITHUB_ENV
+
+      - name: Upload to Backblaze B2
+        env:
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: |
+          set -euo pipefail
+          b2 authorize-account "$B2_APPLICATION_KEY_ID" "$B2_APPLICATION_KEY"
+          b2 upload-file "$B2_BUCKET" "$ENCRYPTED" "db-backups/${ENCRYPTED}"
+
+      - name: Prune old backups (keep last 12 weekly + first-of-month forever)
+        env:
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: |
+          set -euo pipefail
+          # List → sort → delete files older than 12 weeks that aren't first-of-month
+          b2 ls --recursive "$B2_BUCKET" "db-backups/" | awk '{print $NF}' > /tmp/all.txt
+          CUTOFF=$(date -d "12 weeks ago" +%Y-%m-%d)
+          while IFS= read -r path; do
+            # extract date from suds-YYYY-MM-DD.sql.gz.enc
+            name=$(basename "$path")
+            d=$(echo "$name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
+            [ -z "$d" ] && continue
+            # keep if file is from the 1st-7th of the month (monthly anchor)
+            day=$(echo "$d" | cut -d- -f3)
+            if [ "$day" -le 07 ]; then continue; fi
+            # delete if older than cutoff
+            if [[ "$d" < "$CUTOFF" ]]; then
+              echo "Pruning $path"
+              b2 delete-file-version "$path"
+            fi
+          done < /tmp/all.txt

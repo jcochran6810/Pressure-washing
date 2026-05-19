@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/quote/") ||
     path.startsWith("/gallery/") ||
     path.startsWith("/review/") ||
+    path.startsWith("/legal") ||
     path.startsWith("/api/stripe/webhook") ||
     path.startsWith("/api/cron/");
 
