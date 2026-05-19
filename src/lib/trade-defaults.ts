@@ -233,6 +233,109 @@ const GENERAL_HOME: DefaultService[] = [
   { name: "Estimate / consultation", default_price: 0, pricing_unit: "flat", category: "Estimate" },
 ];
 
+const TREE_SERVICE: DefaultService[] = [
+  { name: "Tree trimming (small)", default_price: 275, pricing_unit: "each", category: "Trimming" },
+  { name: "Tree trimming (large)", default_price: 650, pricing_unit: "each", category: "Trimming" },
+  { name: "Tree removal (small)", default_price: 450, pricing_unit: "each", category: "Removal" },
+  { name: "Tree removal (medium)", default_price: 950, pricing_unit: "each", category: "Removal" },
+  { name: "Tree removal (large)", default_price: 1850, pricing_unit: "each", category: "Removal" },
+  { name: "Stump grinding", default_price: 175, pricing_unit: "each", category: "Removal" },
+  { name: "Emergency / storm response", default_price: 195, pricing_unit: "hour", category: "Emergency" },
+  { name: "Tree inspection / arborist consult", default_price: 175, pricing_unit: "flat", category: "Consult" },
+  { name: "Brush hauling", default_price: 95, pricing_unit: "load", category: "Cleanup" },
+];
+
+const FENCING: DefaultService[] = [
+  { name: "Wood fence install", default_price: 35, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Vinyl fence install", default_price: 45, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Chain link fence install", default_price: 22, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Aluminum / iron fence install", default_price: 65, pricing_unit: "linear_ft", category: "Install" },
+  { name: "Gate install", default_price: 395, pricing_unit: "each", category: "Install" },
+  { name: "Fence repair", default_price: 95, pricing_unit: "hour", category: "Repair" },
+  { name: "Post replacement", default_price: 145, pricing_unit: "each", category: "Repair" },
+  { name: "Fence staining / sealing", default_price: 2.50, pricing_unit: "linear_ft", category: "Finish" },
+];
+
+const SNOW_REMOVAL: DefaultService[] = [
+  { name: "Driveway plow (residential)", default_price: 55, pricing_unit: "visit", category: "Plowing" },
+  { name: "Sidewalk shoveling", default_price: 35, pricing_unit: "visit", category: "Shoveling" },
+  { name: "Salting / de-icing", default_price: 45, pricing_unit: "visit", category: "Treatment" },
+  { name: "Seasonal contract (residential)", default_price: 595, pricing_unit: "month", category: "Recurring" },
+  { name: "Commercial lot plow", default_price: 195, pricing_unit: "visit", category: "Plowing" },
+  { name: "Per-inch billing", default_price: 35, pricing_unit: "visit", category: "Plowing" },
+  { name: "Roof snow removal", default_price: 295, pricing_unit: "flat", category: "Specialty" },
+];
+
+const GARAGE_DOOR: DefaultService[] = [
+  { name: "Service call / diagnostic", default_price: 89, pricing_unit: "flat", category: "Service call" },
+  { name: "Spring replacement (single)", default_price: 245, pricing_unit: "flat", category: "Repair" },
+  { name: "Spring replacement (pair)", default_price: 395, pricing_unit: "flat", category: "Repair" },
+  { name: "Opener install", default_price: 495, pricing_unit: "each", category: "Install" },
+  { name: "Cable replacement", default_price: 195, pricing_unit: "flat", category: "Repair" },
+  { name: "Roller / track repair", default_price: 175, pricing_unit: "flat", category: "Repair" },
+  { name: "Panel replacement", default_price: 395, pricing_unit: "each", category: "Repair" },
+  { name: "New door install", default_price: 1495, pricing_unit: "each", category: "Install" },
+  { name: "Tune-up / safety inspection", default_price: 125, pricing_unit: "flat", category: "Maintenance" },
+];
+
+const CONCRETE: DefaultService[] = [
+  { name: "Concrete driveway", default_price: 9.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Concrete patio", default_price: 11.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Concrete sidewalk", default_price: 9.00, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Stamped / decorative concrete", default_price: 16.00, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Concrete repair / patch", default_price: 295, pricing_unit: "flat", category: "Repair" },
+  { name: "Concrete sealing", default_price: 1.25, pricing_unit: "sq_ft", category: "Finish" },
+  { name: "Brick / paver install", default_price: 18, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Mortar / tuckpointing repair", default_price: 12, pricing_unit: "sq_ft", category: "Repair" },
+  { name: "Demolition + haul", default_price: 4.50, pricing_unit: "sq_ft", category: "Removal" },
+];
+
+const IRRIGATION: DefaultService[] = [
+  { name: "System install (per zone)", default_price: 695, pricing_unit: "each", category: "Install" },
+  { name: "Sprinkler head replacement", default_price: 35, pricing_unit: "each", category: "Repair" },
+  { name: "Valve repair", default_price: 145, pricing_unit: "each", category: "Repair" },
+  { name: "Leak repair", default_price: 195, pricing_unit: "flat", category: "Repair" },
+  { name: "Backflow testing", default_price: 95, pricing_unit: "flat", category: "Inspection" },
+  { name: "Winterization / blowout", default_price: 95, pricing_unit: "flat", category: "Seasonal" },
+  { name: "Spring start-up", default_price: 110, pricing_unit: "flat", category: "Seasonal" },
+  { name: "Controller upgrade (smart)", default_price: 395, pricing_unit: "flat", category: "Install" },
+  { name: "Drip line install", default_price: 3.50, pricing_unit: "linear_ft", category: "Install" },
+];
+
+const EPOXY_FLOORING: DefaultService[] = [
+  { name: "Garage epoxy (1-car)", default_price: 1495, pricing_unit: "flat", category: "Install" },
+  { name: "Garage epoxy (2-car)", default_price: 2395, pricing_unit: "flat", category: "Install" },
+  { name: "Garage epoxy (3-car)", default_price: 3295, pricing_unit: "flat", category: "Install" },
+  { name: "Epoxy flake coating", default_price: 7.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Polyaspartic coating", default_price: 9.50, pricing_unit: "sq_ft", category: "Install" },
+  { name: "Polished concrete", default_price: 6.50, pricing_unit: "sq_ft", category: "Finish" },
+  { name: "Concrete prep / grinding", default_price: 2.00, pricing_unit: "sq_ft", category: "Prep" },
+  { name: "Crack / joint repair", default_price: 8, pricing_unit: "linear_ft", category: "Prep" },
+];
+
+const SOLAR_INSTALL: DefaultService[] = [
+  { name: "Solar consultation", default_price: 0, pricing_unit: "flat", category: "Consult" },
+  { name: "Panel install (per panel)", default_price: 695, pricing_unit: "each", category: "Install" },
+  { name: "Inverter install", default_price: 1995, pricing_unit: "each", category: "Install" },
+  { name: "Battery backup install", default_price: 9995, pricing_unit: "each", category: "Install" },
+  { name: "Roof penetration / mount", default_price: 95, pricing_unit: "each", category: "Install" },
+  { name: "System inspection", default_price: 195, pricing_unit: "flat", category: "Inspection" },
+  { name: "Panel cleaning", default_price: 12, pricing_unit: "panel", category: "Maintenance" },
+  { name: "Monitoring system setup", default_price: 395, pricing_unit: "flat", category: "Install" },
+  { name: "Repair service call", default_price: 195, pricing_unit: "flat", category: "Service call" },
+];
+
+const CHIMNEY_SWEEP: DefaultService[] = [
+  { name: "Chimney sweep / cleaning", default_price: 245, pricing_unit: "flat", category: "Cleaning" },
+  { name: "Level 1 inspection", default_price: 125, pricing_unit: "flat", category: "Inspection" },
+  { name: "Level 2 inspection (real estate)", default_price: 295, pricing_unit: "flat", category: "Inspection" },
+  { name: "Cap install", default_price: 195, pricing_unit: "each", category: "Install" },
+  { name: "Crown repair", default_price: 495, pricing_unit: "flat", category: "Repair" },
+  { name: "Flue liner install", default_price: 1995, pricing_unit: "flat", category: "Install" },
+  { name: "Damper repair / replacement", default_price: 395, pricing_unit: "flat", category: "Repair" },
+  { name: "Animal removal", default_price: 195, pricing_unit: "flat", category: "Specialty" },
+];
+
 // Per-trade custom-field templates. These live on the job (most common) by
 // default; estimates inherit them implicitly via the line items. Trades that
 // have nothing trade-specific to capture (e.g. general_home) get an empty list.
@@ -378,6 +481,80 @@ export const DEFAULT_CUSTOM_FIELDS_BY_TRADE: Record<string, CustomFieldDefault[]
     { applies_to: "job", field_key: "removal_date", field_label: "Removal date", field_type: "date" },
   ],
   general_home: [],
+  tree_service: [
+    { applies_to: "job", field_key: "tree_count", field_label: "Number of trees", field_type: "number" },
+    { applies_to: "job", field_key: "tree_size", field_label: "Tree size", field_type: "dropdown", options: ["Small (<25 ft)","Medium (25-50 ft)","Large (50-75 ft)","Very large (>75 ft)"] },
+    { applies_to: "job", field_key: "tree_species", field_label: "Species / type", field_type: "text" },
+    { applies_to: "job", field_key: "near_structure", field_label: "Near house or power lines", field_type: "checkbox" },
+    { applies_to: "job", field_key: "crane_needed", field_label: "Crane needed", field_type: "checkbox" },
+    { applies_to: "job", field_key: "stump_grinding", field_label: "Stump grinding included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "haul_debris", field_label: "Haul debris off-site", field_type: "checkbox" },
+  ],
+  fencing: [
+    { applies_to: "job", field_key: "linear_ft", field_label: "Linear feet", field_type: "number" },
+    { applies_to: "job", field_key: "fence_material", field_label: "Material", field_type: "dropdown", options: ["Wood","Vinyl","Chain link","Aluminum","Iron","Composite"] },
+    { applies_to: "job", field_key: "fence_height_ft", field_label: "Height (ft)", field_type: "number" },
+    { applies_to: "job", field_key: "gate_count", field_label: "Number of gates", field_type: "number" },
+    { applies_to: "job", field_key: "removal_required", field_label: "Existing fence removal", field_type: "checkbox" },
+    { applies_to: "job", field_key: "permit_required", field_label: "Permit required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "hoa_approval", field_label: "HOA approval needed", field_type: "checkbox" },
+  ],
+  snow_removal: [
+    { applies_to: "property", field_key: "driveway_length_ft", field_label: "Driveway length (ft)", field_type: "number" },
+    { applies_to: "property", field_key: "lot_type", field_label: "Lot type", field_type: "dropdown", options: ["Residential","Commercial","HOA"] },
+    { applies_to: "job", field_key: "snow_depth_in", field_label: "Snow depth (inches)", field_type: "number" },
+    { applies_to: "job", field_key: "salt_included", field_label: "Salt / de-ice included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "sidewalks_included", field_label: "Sidewalks included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "billing_mode", field_label: "Billing mode", field_type: "dropdown", options: ["Per visit","Per inch","Seasonal contract"] },
+  ],
+  garage_door: [
+    { applies_to: "job", field_key: "door_size", field_label: "Door size", field_type: "dropdown", options: ["Single (8-9 ft)","Single (10 ft)","Double (16 ft)","Double (18 ft)"] },
+    { applies_to: "job", field_key: "spring_type", field_label: "Spring type", field_type: "dropdown", options: ["Torsion","Extension","Unknown"] },
+    { applies_to: "job", field_key: "opener_brand", field_label: "Opener brand", field_type: "text" },
+    { applies_to: "job", field_key: "issue", field_label: "Issue description", field_type: "long_text" },
+    { applies_to: "job", field_key: "door_age_years", field_label: "Door age (years)", field_type: "number" },
+  ],
+  concrete: [
+    { applies_to: "job", field_key: "sq_ft", field_label: "Square footage", field_type: "number" },
+    { applies_to: "job", field_key: "concrete_type", field_label: "Type of work", field_type: "dropdown", options: ["Driveway","Patio","Sidewalk","Steps","Foundation","Other"] },
+    { applies_to: "job", field_key: "finish", field_label: "Finish", field_type: "dropdown", options: ["Broom","Smooth","Stamped","Exposed aggregate","Polished"] },
+    { applies_to: "job", field_key: "demo_required", field_label: "Demolition / removal required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "rebar_required", field_label: "Rebar / mesh required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "permit_required", field_label: "Permit required", field_type: "checkbox" },
+  ],
+  irrigation: [
+    { applies_to: "property", field_key: "zones", field_label: "Number of zones", field_type: "number" },
+    { applies_to: "job", field_key: "controller_brand", field_label: "Controller brand", field_type: "text" },
+    { applies_to: "job", field_key: "water_source", field_label: "Water source", field_type: "dropdown", options: ["City","Well","Reclaimed"] },
+    { applies_to: "job", field_key: "head_type", field_label: "Head type", field_type: "dropdown", options: ["Spray","Rotor","Drip","Mixed"] },
+    { applies_to: "job", field_key: "leak_active", field_label: "Active leak", field_type: "checkbox" },
+    { applies_to: "job", field_key: "backflow_present", field_label: "Backflow preventer present", field_type: "checkbox" },
+  ],
+  epoxy_flooring: [
+    { applies_to: "job", field_key: "sq_ft", field_label: "Square footage", field_type: "number" },
+    { applies_to: "job", field_key: "coating_type", field_label: "Coating type", field_type: "dropdown", options: ["Epoxy","Polyaspartic","Polyurea","Polished concrete"] },
+    { applies_to: "job", field_key: "flake_color", field_label: "Flake / color", field_type: "text" },
+    { applies_to: "job", field_key: "moisture_test", field_label: "Moisture test required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "crack_repair", field_label: "Crack repair required", field_type: "checkbox" },
+    { applies_to: "job", field_key: "grinding_required", field_label: "Concrete grinding required", field_type: "checkbox" },
+  ],
+  solar_install: [
+    { applies_to: "property", field_key: "panel_count", field_label: "Number of panels", field_type: "number" },
+    { applies_to: "property", field_key: "system_kw", field_label: "System size (kW)", field_type: "number" },
+    { applies_to: "job", field_key: "inverter_type", field_label: "Inverter type", field_type: "dropdown", options: ["String","Microinverter","Hybrid"] },
+    { applies_to: "job", field_key: "battery_included", field_label: "Battery backup included", field_type: "checkbox" },
+    { applies_to: "job", field_key: "roof_type", field_label: "Roof type", field_type: "dropdown", options: ["Composite shingle","Metal","Tile","Flat / TPO"] },
+    { applies_to: "job", field_key: "permit_status", field_label: "Permit status", field_type: "dropdown", options: ["Not started","Submitted","Approved","Inspected"] },
+    { applies_to: "job", field_key: "utility", field_label: "Utility company", field_type: "text" },
+  ],
+  chimney_sweep: [
+    { applies_to: "job", field_key: "fireplace_type", field_label: "Fireplace type", field_type: "dropdown", options: ["Wood-burning","Gas","Pellet","Insert"] },
+    { applies_to: "job", field_key: "chimney_height_ft", field_label: "Chimney height (ft)", field_type: "number" },
+    { applies_to: "job", field_key: "creosote_level", field_label: "Creosote level", field_type: "dropdown", options: ["Light","Moderate","Heavy","Glazed"] },
+    { applies_to: "job", field_key: "cap_present", field_label: "Cap present", field_type: "checkbox" },
+    { applies_to: "job", field_key: "animal_concern", field_label: "Animal in chimney", field_type: "checkbox" },
+    { applies_to: "job", field_key: "level2_inspection", field_label: "Level 2 inspection requested", field_type: "checkbox" },
+  ],
 };
 
 export function getCustomFieldDefaultsForTrade(business_type_id: string): CustomFieldDefault[] {
@@ -406,6 +583,15 @@ export const DEFAULT_SERVICES_BY_TRADE: Record<string, DefaultService[]> = {
   dryer_vent: DRYER_VENT,
   holiday_lights: HOLIDAY_LIGHTS,
   general_home: GENERAL_HOME,
+  tree_service: TREE_SERVICE,
+  fencing: FENCING,
+  snow_removal: SNOW_REMOVAL,
+  garage_door: GARAGE_DOOR,
+  concrete: CONCRETE,
+  irrigation: IRRIGATION,
+  epoxy_flooring: EPOXY_FLOORING,
+  solar_install: SOLAR_INSTALL,
+  chimney_sweep: CHIMNEY_SWEEP,
 };
 
 export function getDefaultsForTrade(business_type_id: string): DefaultService[] {
@@ -468,10 +654,39 @@ const FORM_CONFIG_BY_TRADE: Record<string, Partial<ServiceFormConfig>> = {
   house_cleaning: {
     showPricePerSqft: true,
   },
+  tree_service: {
+    showHeightModifier: true,
+  },
+  fencing: {
+    showPricePerLinearFt: true,
+    materials: ["wood","vinyl","chain_link","aluminum","iron","composite"],
+    showMaterialModifiers: true,
+  },
+  snow_removal: {
+    showPricePerLinearFt: true,
+  },
+  concrete: {
+    showPricePerSqft: true,
+    showPricePerLinearFt: true,
+    materials: ["concrete","pavers","brick","stone"],
+    showMaterialModifiers: true,
+  },
+  irrigation: {
+    showPricePerLinearFt: true,
+  },
+  epoxy_flooring: {
+    showPricePerSqft: true,
+  },
+  solar_install: {
+    showHeightModifier: true,
+  },
+  chimney_sweep: {
+    showHeightModifier: true,
+  },
   // Trades not listed (lawn_care, plumbing, electrical, hvac, pool_service,
   // pest_control, junk_removal, mobile_detailing, appliance_repair,
-  // dryer_vent, handyman, general_home) get DEFAULT_FORM_CONFIG — no material
-  // modifiers, no height, no per-area pricing fields.
+  // dryer_vent, handyman, general_home, garage_door) get DEFAULT_FORM_CONFIG
+  // — no material modifiers, no height, no per-area pricing fields.
 };
 
 export function getFormConfigForTrade(business_type_id: string): ServiceFormConfig {

@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { ToastFromSearchParams, ToastProvider } from "@/components/toast";
 import { getSessionAndOrg } from "@/lib/org";
 import { isPlatformAdmin, getImpersonatedOrgId } from "@/lib/admin";
+import { featuresFor } from "@/lib/trade-features";
 import type { Notification } from "@/components/notifications";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { count: newLeadsCount },
     { data: lowStock },
     { data: serviceDue },
+    { data: tradeRows },
   ] = await Promise.all([
     supabase.from("jobs").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["scheduled", "in_progress"]),
     supabase.from("invoices").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["sent", "partial", "overdue"]),
@@ -31,6 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "new"),
     supabase.from("chemicals").select("id, name, current_stock, reorder_level").eq("organization_id", organizationId),
     supabase.from("equipment").select("id, name, next_service_date").eq("organization_id", organizationId).not("next_service_date", "is", null).lte("next_service_date", serviceCutoff),
+    supabase.from("organization_business_types").select("business_type_id").eq("organization_id", organizationId),
   ]);
 
   const outstanding = (openInvoices ?? []).reduce((s, i: any) => s + Number(i.balance_due ?? 0), 0);
@@ -89,6 +92,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     });
   }
 
+  // Collect the org's trade ids — falls back to the singular column for
+  // legacy orgs that pre-date the join table. The result drives which
+  // sidebar links the user sees.
+  const tradeIds = (tradeRows ?? []).map((r: any) => r.business_type_id as string);
+  if (tradeIds.length === 0 && organization?.business_type_id) {
+    tradeIds.push(organization.business_type_id as string);
+  }
+  const tradeFeatures = Array.from(featuresFor(tradeIds));
+
   return (
     <ToastProvider>
       <ToastFromSearchParams />
@@ -100,6 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         notifications={notifications}
         isPlatformAdmin={userIsAdmin}
         impersonatingOrgId={impersonating}
+        tradeFeatures={tradeFeatures}
       >
         {children}
       </AppShell>
