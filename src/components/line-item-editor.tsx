@@ -5,8 +5,23 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { MeasurementModal } from "./measurement-modal";
 
-type Item = { description: string; quantity: number; unit_price: number; photos: string[] };
-type Service = { id: string; name: string; default_price: number | null };
+export type LineKind = "labor" | "material" | "service" | "other";
+
+type Item = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  photos: string[];
+  kind: LineKind;
+  taxable: boolean;
+};
+type Service = {
+  id: string;
+  name: string;
+  default_price: number | null;
+  default_kind?: LineKind | null;
+  default_taxable?: boolean | null;
+};
 
 export function LineItemEditor({
   services,
@@ -25,7 +40,20 @@ export function LineItemEditor({
   mapsApiKey?: string | null;
   initialAddress?: string;
 }) {
-  const [items, setItems] = useState<Item[]>(initial?.length ? initial : [{ description: "", quantity: 1, unit_price: 0, photos: [] }]);
+  const [items, setItems] = useState<Item[]>(
+    initial?.length
+      ? initial
+      : [
+          {
+            description: "",
+            quantity: 1,
+            unit_price: 0,
+            photos: [],
+            kind: "service",
+            taxable: true,
+          },
+        ],
+  );
   const [taxRate, setTaxRate] = useState<number>(taxRateInitial ?? 0);
   const [discount, setDiscount] = useState<number>(discountInitial ?? 0);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
@@ -40,12 +68,20 @@ export function LineItemEditor({
     setItems((arr) => arr.filter((_, idx) => idx !== i));
   }
   function add() {
-    setItems((arr) => [...arr, { description: "", quantity: 1, unit_price: 0, photos: [] }]);
+    setItems((arr) => [
+      ...arr,
+      { description: "", quantity: 1, unit_price: 0, photos: [], kind: "service", taxable: true },
+    ]);
   }
   function applyService(i: number, serviceId: string) {
     const s = services.find((x) => x.id === serviceId);
     if (!s) return;
-    update(i, { description: s.name, unit_price: Number(s.default_price ?? 0) });
+    update(i, {
+      description: s.name,
+      unit_price: Number(s.default_price ?? 0),
+      kind: (s.default_kind as LineKind | undefined) ?? items[i].kind,
+      taxable: typeof s.default_taxable === "boolean" ? s.default_taxable : items[i].taxable,
+    });
   }
 
   async function handleFiles(i: number, files: FileList | null) {
@@ -73,10 +109,22 @@ export function LineItemEditor({
     update(i, { photos: items[i].photos.filter((u) => u !== url) });
   }
 
-  const subtotal = items.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
-  const taxBase = Math.max(0, subtotal - (Number(discount) || 0));
+  // Compute the same totals the server-side helper computes so the
+  // running total in the form matches the persisted document exactly.
+  const lineTotals = items.map((it) => ({
+    line: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+    taxable: it.taxable,
+    kind: it.kind,
+  }));
+  const subtotal = lineTotals.reduce((s, l) => s + l.line, 0);
+  const taxableRaw = lineTotals.reduce((s, l) => s + (l.taxable ? l.line : 0), 0);
+  const discountTaxablePortion = subtotal > 0 ? (taxableRaw / subtotal) * (Number(discount) || 0) : 0;
+  const taxBase = Math.max(0, taxableRaw - discountTaxablePortion);
   const taxAmount = taxBase * (Number(taxRate) || 0);
-  const total = taxBase + taxAmount;
+  const total = Math.max(0, subtotal - (Number(discount) || 0)) + taxAmount;
+  const laborTotal = lineTotals.reduce((s, l) => s + (l.kind === "labor" ? l.line : 0), 0);
+  const materialsTotal = lineTotals.reduce((s, l) => s + (l.kind === "material" ? l.line : 0), 0);
+  const hasMixedKinds = laborTotal > 0 && materialsTotal > 0;
 
   return (
     <div className="space-y-3">
@@ -88,9 +136,7 @@ export function LineItemEditor({
           onConfirm={(sqft) => {
             const idx = measuringIdx;
             if (idx !== null && sqft > 0) {
-              // Drop the measured sqft into the quantity column of that line.
               update(idx, { quantity: sqft });
-              // If the line has no description yet, hint at sqft so it's obvious why qty is so high.
               if (!items[idx].description.trim()) {
                 update(idx, { description: `${sqft.toLocaleString()} sqft area` });
               }
@@ -159,6 +205,44 @@ export function LineItemEditor({
               </div>
             </div>
 
+            {/* Kind dropdown + per-line tax toggle. We post both as form
+                fields so the server action can parse them positionally
+                alongside the rest of the li_* arrays. */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+              <label className="flex items-center gap-1.5">
+                <span className="text-gray-500">Type</span>
+                <select
+                  name="li_kind"
+                  value={it.kind}
+                  onChange={(e) => update(i, { kind: e.target.value as LineKind })}
+                  className="text-xs py-1"
+                >
+                  <option value="service">Service</option>
+                  <option value="labor">Labor</option>
+                  <option value="material">Material</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="li_taxable"
+                  value="1"
+                  checked={it.taxable}
+                  onChange={(e) => update(i, { taxable: e.target.checked })}
+                />
+                <span>Charge tax on this line</span>
+              </label>
+              {/* Row-aligned marker so the server can map taxable per row even
+                  when an unchecked box doesn't POST. Always emitted, one per
+                  row, in render order. */}
+              <input
+                type="hidden"
+                name="li_taxable_marker"
+                value={it.taxable ? "checked" : "unchecked"}
+              />
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <label className="btn-ghost text-xs cursor-pointer">
                 {uploadingIdx === i ? "Uploading…" : "+ Add picture"}
@@ -193,7 +277,6 @@ export function LineItemEditor({
                   </button>
                 </div>
               ))}
-              {/* Photo URLs travel with the form as one JSON string per item */}
               <input type="hidden" name="li_photos" value={JSON.stringify(it.photos)} />
             </div>
           </div>
@@ -215,7 +298,14 @@ export function LineItemEditor({
         </div>
         <div className="card-padded">
           <Row label="Subtotal" value={formatCurrency(subtotal)} />
+          {hasMixedKinds && (
+            <>
+              <Row label="  • Labor" value={formatCurrency(laborTotal)} dim />
+              <Row label="  • Materials" value={formatCurrency(materialsTotal)} dim />
+            </>
+          )}
           <Row label="Discount" value={`− ${formatCurrency(discount)}`} />
+          <Row label={`Taxable subtotal`} value={formatCurrency(taxBase)} dim />
           <Row label={`Tax (${(taxRate * 100).toFixed(2)}%)`} value={formatCurrency(taxAmount)} />
           <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-bold text-lg">
             <span>Total</span>
@@ -227,11 +317,11 @@ export function LineItemEditor({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
   return (
-    <div className="flex justify-between text-sm py-0.5">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className={"flex justify-between text-sm py-0.5 " + (dim ? "text-gray-500" : "")}>
+      <span className={dim ? "" : "text-gray-500"}>{label}</span>
+      <span className={dim ? "" : "font-medium"}>{value}</span>
     </div>
   );
 }

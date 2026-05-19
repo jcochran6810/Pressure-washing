@@ -136,6 +136,68 @@ describe("computeDocumentTotals", () => {
     );
     expect(r.subtotal).toBe(180.08);
   });
+
+  it("excludes non-taxable lines from the tax base", () => {
+    // Labor often isn't taxed in mixed jurisdictions; materials are.
+    // $500 labor (non-taxable) + $200 materials (taxable) at 10% should
+    // tax only the $200, not the $700.
+    const r = computeDocumentTotals(
+      [
+        { quantity: 1, unit_price: 500, taxable: false, kind: "labor" },
+        { quantity: 1, unit_price: 200, taxable: true, kind: "material" },
+      ],
+      { tax_rate: 0.1 },
+    );
+    expect(r.subtotal).toBe(700);
+    expect(r.taxable_subtotal).toBe(200);
+    expect(r.tax_amount).toBe(20);
+    expect(r.total).toBe(720);
+    expect(r.labor_subtotal).toBe(500);
+    expect(r.materials_subtotal).toBe(200);
+  });
+
+  it("treats undefined taxable as true (back-compat)", () => {
+    // Pre-existing line rows have no taxable field; they must continue
+    // to behave exactly like the old single-rate model.
+    const r = computeDocumentTotals(
+      [{ quantity: 1, unit_price: 100 }, { quantity: 1, unit_price: 50 }],
+      { tax_rate: 0.08 },
+    );
+    expect(r.taxable_subtotal).toBe(150);
+    expect(r.tax_amount).toBe(12);
+    expect(r.total).toBe(162);
+  });
+
+  it("pro-rates the discount across taxable and non-taxable lines", () => {
+    // $100 taxable + $100 non-taxable = $200 subtotal. A $50 discount
+    // should remove $25 from the taxable base (not the whole $50) so
+    // tax computes on $75, not $50.
+    const r = computeDocumentTotals(
+      [
+        { quantity: 1, unit_price: 100, taxable: true, kind: "material" },
+        { quantity: 1, unit_price: 100, taxable: false, kind: "labor" },
+      ],
+      { discount: 50, tax_rate: 0.1 },
+    );
+    expect(r.subtotal).toBe(200);
+    expect(r.taxable_subtotal).toBe(75);
+    expect(r.tax_amount).toBe(7.5);
+    expect(r.total).toBe(157.5); // 200 − 50 + 7.50
+  });
+
+  it("only rolls up kind subtotals for labor / material (not service / other)", () => {
+    const r = computeDocumentTotals(
+      [
+        { quantity: 1, unit_price: 100, kind: "service" },
+        { quantity: 1, unit_price: 50, kind: "other" },
+        { quantity: 1, unit_price: 25, kind: "labor" },
+      ],
+      { tax_rate: 0 },
+    );
+    expect(r.subtotal).toBe(175);
+    expect(r.labor_subtotal).toBe(25);
+    expect(r.materials_subtotal).toBe(0);
+  });
 });
 
 describe("computeDeposit", () => {

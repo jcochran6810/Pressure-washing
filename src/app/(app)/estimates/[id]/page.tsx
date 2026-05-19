@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setEstimateStatus, convertEstimateToInvoice, deleteEstimate, saveEstimateToDrive, emailEstimateToCustomer, sendEstimateViaTemplate } from "../actions";
+import { isEstimateEditable } from "../helpers";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { PhotoGallery } from "@/components/photo-gallery";
@@ -60,6 +61,9 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
           <span className={`badge mt-1 ${statusColor(est.status)}`}>{est.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isEstimateEditable(est.status) && (
+            <Link href={`/estimates/${est.id}/edit`} className="btn-secondary">Edit</Link>
+          )}
           <a href={`/api/documents/estimates/${est.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
           <form action={emailEst}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
           <form action={emailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>

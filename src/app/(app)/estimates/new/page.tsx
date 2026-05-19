@@ -7,13 +7,19 @@ import { CustomerPicker } from "@/components/customer-picker";
 export const dynamic = "force-dynamic";
 
 export default async function NewEstimatePage({ searchParams }: { searchParams: Promise<{ customer?: string }> }) {
-  const { supabase, organizationId } = await getSessionAndOrg();
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
   const { customer } = await searchParams;
 
   const [{ data: customers }, { data: services }] = await Promise.all([
     supabase.from("customers").select("id, first_name, last_name, company_name").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-    supabase.from("services").select("id, name, default_price").eq("organization_id", organizationId).eq("active", true).order("name"),
+    supabase
+      .from("services")
+      .select("id, name, default_price, default_kind, default_taxable")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .order("name"),
   ]);
+  const defaultTaxRate = Number(organization?.tax_rate ?? 0);
 
   const today = new Date().toISOString().slice(0, 10);
   const expiry = new Date();
@@ -51,6 +57,7 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
           <h2 className="font-semibold mb-3">Line items</h2>
           <LineItemEditor
             services={(services as any) ?? []}
+            taxRateInitial={defaultTaxRate}
             organizationId={organizationId}
             mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}
           />
