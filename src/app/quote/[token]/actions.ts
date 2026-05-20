@@ -47,3 +47,32 @@ export async function declineQuote(token: string, formData: FormData) {
   revalidatePath(`/quote/${token}`);
   redirect(`/quote/${token}`);
 }
+
+// Customer requested a revision rather than accept/decline. Append the
+// request to the estimate's notes and leave status as 'sent' so the owner
+// can edit and resend without losing the live link. Avoids needing a brand
+// new status column at the DB level.
+export async function requestRevision(token: string, formData: FormData) {
+  const supabase = publicClient();
+  const reason = String(formData.get("reason") || "").trim();
+  if (!reason) {
+    redirect(`/quote/${token}?action=revise`);
+  }
+  const { data: est } = await supabase
+    .from("estimates")
+    .select("id, notes")
+    .eq("approval_token", token)
+    .maybeSingle();
+  if (!est) {
+    redirect(`/quote/${token}`);
+  }
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const tag = `\n\n[Revision requested ${stamp}]\n${reason}`;
+  const newNotes = ((est as any).notes ?? "") + tag;
+  await supabase
+    .from("estimates")
+    .update({ notes: newNotes })
+    .eq("approval_token", token);
+  revalidatePath(`/quote/${token}`);
+  redirect(`/quote/${token}?revised=1`);
+}

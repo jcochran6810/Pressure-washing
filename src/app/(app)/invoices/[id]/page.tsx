@@ -8,6 +8,7 @@ import { NextStepBanner } from "@/components/next-step-banner";
 import { loadWorkflow } from "@/lib/workflow";
 import { workflowLabel } from "@/lib/numbering";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { ScrollToTop } from "@/components/scroll-to-top";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
+      <ScrollToTop />
       <Link href="/invoices" className="text-sm text-brand-600 hover:underline">← Invoices</Link>
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-5">
         <div>

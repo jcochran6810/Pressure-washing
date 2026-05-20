@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
-import { approveQuote, declineQuote } from "./actions";
+import { approveQuote, declineQuote, requestRevision } from "./actions";
 import { PLATFORM_NAME } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +15,9 @@ function publicClient() {
   );
 }
 
-export default async function PublicQuotePage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams?: Promise<{ deposit?: string; approved?: string }> }) {
+export default async function PublicQuotePage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams?: Promise<{ deposit?: string; approved?: string; action?: string; revised?: string }> }) {
   const { token } = await params;
-  const { deposit, approved } = (await searchParams) ?? {};
+  const { deposit, approved, action, revised } = (await searchParams) ?? {};
   const supabase = publicClient();
   // Note: public reads require either RLS-public-policy or a server-side bypass. For now we
   // read via the anon key which won't bypass RLS. To make this work in production, run a
@@ -46,6 +46,10 @@ export default async function PublicQuotePage({ params, searchParams }: { params
   const items = (est.estimate_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const approve = approveQuote.bind(null, token);
   const decline = declineQuote.bind(null, token);
+  const revise = requestRevision.bind(null, token);
+  const focusRevise = action === "revise";
+  const focusDecline = action === "decline";
+  const focusAccept = action === "accept";
 
   return (
     <main className="min-h-screen bg-gray-50 py-8 px-4">
@@ -65,6 +69,7 @@ export default async function PublicQuotePage({ params, searchParams }: { params
           {expired && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">This estimate expired on {formatDate(est.expires_at)}.</div>}
           {alreadyResponded && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Status: {est.status}. Thanks!</div>}
           {approved === "1" && !est.deposit_amount && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Approved — we'll be in touch shortly.</div>}
+          {revised === "1" && <div className="mt-3 p-3 rounded-md bg-blue-50 text-blue-800 text-sm">Revision request sent — we'll be in touch shortly.</div>}
           {deposit === "paid" && <div className="mt-3 p-3 rounded-md bg-green-50 text-green-800 text-sm">Deposit received — thank you. We'll be in touch shortly.</div>}
           {deposit === "canceled" && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">Deposit checkout was canceled. You can retry below.</div>}
           {deposit === "no_connect" && <div className="mt-3 p-3 rounded-md bg-amber-50 text-amber-800 text-sm">Online deposit isn't available right now. We'll follow up with payment details.</div>}
@@ -122,23 +127,55 @@ export default async function PublicQuotePage({ params, searchParams }: { params
           </div>
         )}
 
+        <div className="card-padded mb-4 text-center">
+          <a
+            href={`/api/quote/${token}/pdf`}
+            target="_blank"
+            rel="noopener"
+            className="btn-secondary inline-block"
+          >
+            ⬇ Download PDF
+          </a>
+        </div>
+
         {!alreadyResponded && !expired && (
           <div className="card-padded">
-            <h2 className="font-semibold mb-3">Approve this quote</h2>
-            <form action={approve} className="space-y-3 mb-4">
-              <div>
-                <label>Your name (signature)</label>
-                <input name="signature" required className="w-full" />
-              </div>
-              <button className="btn-primary w-full text-base py-3">✓ Approve estimate</button>
-            </form>
-            <form action={decline} className="space-y-2">
-              <details>
-                <summary className="text-sm text-gray-600 cursor-pointer">Need to decline?</summary>
-                <textarea name="reason" rows={2} placeholder="Reason (optional)" className="w-full mt-2" />
-                <button className="btn-ghost text-red-600 text-sm mt-1">Decline</button>
-              </details>
-            </form>
+            <h2 className="font-semibold mb-3">Respond to this estimate</h2>
+            <details open={focusAccept || (!focusRevise && !focusDecline)} className="mb-3 border border-green-200 rounded-md">
+              <summary className="cursor-pointer px-3 py-2 bg-green-50 text-green-800 font-medium rounded-md">
+                ✓ Accept estimate
+              </summary>
+              <form action={approve} className="space-y-3 p-3">
+                <div>
+                  <label>Your name (signature)</label>
+                  <input name="signature" required className="w-full" />
+                </div>
+                <button className="btn-primary w-full text-base py-3">Approve estimate</button>
+              </form>
+            </details>
+
+            <details open={focusRevise} className="mb-3 border border-amber-200 rounded-md">
+              <summary className="cursor-pointer px-3 py-2 bg-amber-50 text-amber-800 font-medium rounded-md">
+                ✎ Request a revision
+              </summary>
+              <form action={revise} className="space-y-2 p-3">
+                <div>
+                  <label>What would you like changed?</label>
+                  <textarea name="reason" rows={3} required placeholder="e.g. Please remove the gutter cleaning line, or change the date to..." className="w-full" />
+                </div>
+                <button className="btn-secondary w-full">Send revision request</button>
+              </form>
+            </details>
+
+            <details open={focusDecline} className="border border-red-200 rounded-md">
+              <summary className="cursor-pointer px-3 py-2 bg-red-50 text-red-800 font-medium rounded-md">
+                ✕ Decline
+              </summary>
+              <form action={decline} className="space-y-2 p-3">
+                <textarea name="reason" rows={2} placeholder="Reason (optional)" className="w-full" />
+                <button className="btn-ghost text-red-600 text-sm">Decline estimate</button>
+              </form>
+            </details>
           </div>
         )}
 

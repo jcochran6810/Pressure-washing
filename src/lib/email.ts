@@ -1,6 +1,12 @@
 // Resend-based email. Set RESEND_API_KEY and RESEND_FROM in .env.local.
 // We use fetch instead of the SDK to keep dependencies minimal.
 
+export type EmailAttachment = {
+  filename: string;
+  content: Uint8Array | Buffer | string; // base64 string accepted as-is
+  contentType?: string;
+};
+
 type SendArgs = {
   to: string;
   subject: string;
@@ -11,9 +17,16 @@ type SendArgs = {
   // RFC 2369 / 8058 — when set, Resend / Gmail expose a one-click
   // unsubscribe affordance in their UI.
   listUnsubscribeUrl?: string | null;
+  attachments?: EmailAttachment[];
 };
 
 export type EmailResult = { ok: true; id: string } | { ok: false; reason: string };
+
+function toBase64(content: Uint8Array | Buffer | string): string {
+  if (typeof content === "string") return content;
+  if (content instanceof Buffer) return content.toString("base64");
+  return Buffer.from(content).toString("base64");
+}
 
 export async function sendEmail(args: SendArgs): Promise<EmailResult> {
   const key = args.apiKey || process.env.RESEND_API_KEY;
@@ -27,6 +40,13 @@ export async function sendEmail(args: SendArgs): Promise<EmailResult> {
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       }
     : {};
+  const attachments = args.attachments?.length
+    ? args.attachments.map((a) => ({
+        filename: a.filename,
+        content: toBase64(a.content),
+        content_type: a.contentType,
+      }))
+    : undefined;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -40,6 +60,7 @@ export async function sendEmail(args: SendArgs): Promise<EmailResult> {
       html: args.html,
       reply_to: args.replyTo ? [args.replyTo] : undefined,
       headers: Object.keys(headers).length ? headers : undefined,
+      attachments,
     }),
   });
   if (!res.ok) {

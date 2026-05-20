@@ -4,6 +4,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
+import { estimatePdf } from "@/lib/document-pdf";
 import { estimateSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -240,7 +241,7 @@ async function loadEstimateForDoc(id: string) {
     .eq("organization_id", organizationId)
     .single();
   if (!est) throw new Error("Estimate not found");
-  return { supabase, organizationId, organization, est };
+  return { supabase, organizationId, organization, est: est as any };
 }
 
 function estimateDocHtml(organization: any, est: any) {
@@ -259,6 +260,70 @@ function estimateDocHtml(organization: any, est: any) {
   });
 }
 
+async function estimateDocPdf(organization: any, est: any): Promise<Uint8Array> {
+  const items = (est.estimate_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  return estimatePdf({
+    org: organization,
+    customer: est.customers as any,
+    estimateNumber: est.estimate_number,
+    issueDate: est.issue_date,
+    expiresAt: est.expires_at,
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+    })),
+    subtotal: Number(est.subtotal),
+    discount: Number(est.discount_amount ?? 0),
+    taxRate: Number(est.tax_rate ?? 0),
+    tax: Number(est.tax_amount ?? 0),
+    total: Number(est.total),
+    notes: est.notes,
+    terms: est.terms,
+    currency: organization?.currency,
+  });
+}
+
+function estimateActionEmailHtml(opts: {
+  orgName: string;
+  customerFirst: string;
+  estimateNumber: string;
+  total: string;
+  expiresAt: string | null;
+  approveUrl: string;
+  reviseUrl: string;
+  declineUrl: string;
+  viewUrl: string;
+}) {
+  const expiresLine = opts.expiresAt
+    ? `<p style="margin:0 0 8px;color:#64748b;font-size:13px;">This estimate is valid through ${escapeHtml(opts.expiresAt)} (30 days).</p>`
+    : "";
+  return `<!doctype html><html><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;padding:24px;color:#0f172a;">
+    <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;border:1px solid #e2e8f0;">
+      <h1 style="margin:0 0 4px;font-size:20px;">${escapeHtml(opts.orgName)}</h1>
+      <p style="margin:0 0 16px;color:#64748b;font-size:13px;">Estimate ${escapeHtml(opts.estimateNumber)} — ${escapeHtml(opts.total)}</p>
+      <p>Hi ${escapeHtml(opts.customerFirst)},</p>
+      <p>Your estimate is attached as a PDF. Please review and choose one of the options below:</p>
+      <div style="margin:20px 0;display:flex;flex-direction:column;gap:8px;">
+        <a href="${escapeAttr(opts.approveUrl)}" style="display:block;padding:12px 16px;background:#16a34a;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;text-align:center;">Accept estimate</a>
+        <a href="${escapeAttr(opts.reviseUrl)}" style="display:block;padding:12px 16px;background:#f59e0b;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;text-align:center;">Request a revision</a>
+        <a href="${escapeAttr(opts.declineUrl)}" style="display:block;padding:12px 16px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;text-align:center;">Decline</a>
+      </div>
+      <p style="margin:16px 0 4px;font-size:13px;">Prefer to view it online first? <a href="${escapeAttr(opts.viewUrl)}" style="color:#2563eb;">Open in browser</a>.</p>
+      ${expiresLine}
+      <p style="color:#64748b;font-size:12px;margin-top:20px;">Reply to this email with any questions. Thanks!<br/>— ${escapeHtml(opts.orgName)}</p>
+    </div>
+  </body></html>`;
+}
+
+function escapeHtml(s: string) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+function escapeAttr(s: string) {
+  return escapeHtml(s);
+}
+
 export async function saveEstimateToDrive(id: string) {
   const { organizationId, organization, est } = await loadEstimateForDoc(id);
   await uploadHtmlToDrive({
@@ -271,16 +336,131 @@ export async function saveEstimateToDrive(id: string) {
 }
 
 export async function emailEstimateToCustomer(id: string) {
-  const { organizationId, organization, est } = await loadEstimateForDoc(id);
+  const { supabase, organizationId, organization, est } = await loadEstimateForDoc(id);
   const cust: any = est.customers;
   if (!cust?.email) throw new Error("Customer has no email.");
+
+  // Mint an approval token on demand. The estimate's expires_at field
+  // (defaulted to 30 days at creation) governs link validity; the same
+  // token is reused across sends so a previously emailed link keeps working
+  // until the estimate expires or status changes.
+  let approvalToken = est.approval_token as string | null;
+  if (!approvalToken) {
+    approvalToken = crypto.randomUUID().replace(/-/g, "");
+    await supabase.from("estimates").update({ approval_token: approvalToken }).eq("id", id).eq("organization_id", organizationId);
+  }
+
+  const { formatCurrency } = await import("@/lib/utils");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const quoteBase = `${appUrl}/quote/${approvalToken}`;
+  const pdfBytes = await estimateDocPdf(organization, est);
+
   await sendOrgEmail(organizationId, {
     to: cust.email,
-    subject: `Estimate ${est.estimate_number} from ${organization?.name}`,
-    html: estimateDocHtml(organization, est),
+    subject: `Estimate ${est.estimate_number} from ${organization?.name ?? ""}`.trim(),
+    html: estimateActionEmailHtml({
+      orgName: organization?.name ?? "",
+      customerFirst: cust?.first_name || cust?.company_name || "there",
+      estimateNumber: est.estimate_number,
+      total: formatCurrency(Number(est.total ?? 0), organization?.currency ?? "USD"),
+      expiresAt: est.expires_at ?? null,
+      approveUrl: `${quoteBase}?action=accept`,
+      reviseUrl: `${quoteBase}?action=revise`,
+      declineUrl: `${quoteBase}?action=decline`,
+      viewUrl: quoteBase,
+    }),
     replyTo: organization?.email ?? undefined,
+    attachments: [
+      {
+        filename: `${est.estimate_number}.pdf`,
+        content: pdfBytes,
+        contentType: "application/pdf",
+      },
+    ],
   });
   await setEstimateStatus(id, "sent");
+}
+
+export async function updateEstimate(id: string, formData: FormData) {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const validated = parseForm(estimateSchema, formData);
+
+  const { data: existing } = await supabase
+    .from("estimates")
+    .select("status")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!existing) throw new Error("Estimate not found");
+  if (existing.status === "accepted" || existing.status === "converted") {
+    throw new Error("This estimate is locked because the customer accepted or it was converted to an invoice.");
+  }
+
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const defaultExpiry = new Date(issue_date);
+  defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+  const expires_at = validated.expires_at || defaultExpiry.toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
+  const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
+  const items = parseLineItems(formData);
+
+  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const globalMin = Number(organization?.global_min_job_price ?? 0);
+  if (globalMin > 0 && subtotal < globalMin) {
+    subtotal = globalMin;
+    if (items.length === 0) {
+      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [] });
+    }
+  }
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+
+  const depositThreshold = Number(organization?.deposit_threshold ?? 0);
+  const depositPct = Number(organization?.deposit_percentage ?? 0.25);
+  const deposit_amount = depositThreshold > 0 && total >= depositThreshold ? Math.round(total * depositPct * 100) / 100 : null;
+
+  await supabase
+    .from("estimates")
+    .update({
+      customer_id: validated.customer_id,
+      property_id: validated.property_id ?? null,
+      issue_date,
+      expires_at,
+      tax_rate,
+      discount_amount,
+      tax_amount,
+      subtotal,
+      total,
+      notes: validated.notes ?? null,
+      terms: validated.terms ?? null,
+      duration_minutes,
+      buffer_minutes,
+      deposit_amount,
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  // Replace line items wholesale — simpler than diffing and matches the editor's intent.
+  await supabase.from("estimate_line_items").delete().eq("estimate_id", id);
+  if (items.length) {
+    await supabase.from("estimate_line_items").insert(
+      items.map((i, idx) => ({
+        estimate_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.quantity * i.unit_price,
+        sort_order: idx,
+        photo_urls: i.photos,
+      })),
+    );
+  }
+
+  revalidatePath(`/estimates/${id}`);
+  revalidatePath("/estimates");
+  redirect(`/estimates/${id}`);
 }
 
 // Send the estimate via a pre-made template (email or SMS).

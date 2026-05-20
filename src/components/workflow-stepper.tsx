@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import type { WorkflowState } from "@/lib/workflow";
 
@@ -14,6 +17,21 @@ export function WorkflowStepper({ workflow }: { workflow: WorkflowState }) {
   const steps = buildSteps(workflow);
   const currentIdx = steps.findIndex((s) => s.state === "current");
   const next = currentIdx >= 0 ? steps[currentIdx] : null;
+  const listRef = useRef<HTMLOListElement>(null);
+  const currentRef = useRef<HTMLLIElement>(null);
+
+  // Whenever workflow state changes, keep the active step inside the visible
+  // slider so the user can always see where they are in the process.
+  useEffect(() => {
+    const li = currentRef.current;
+    const ol = listRef.current;
+    if (!li || !ol) return;
+    const liRect = li.getBoundingClientRect();
+    const olRect = ol.getBoundingClientRect();
+    // Centre the current pill horizontally within the scroll container.
+    const offsetLeft = li.offsetLeft - (ol.clientWidth - liRect.width) / 2;
+    ol.scrollTo({ left: Math.max(0, offsetLeft), behavior: "smooth" });
+  }, [currentIdx, workflow.estimateStatus, workflow.jobStatus, workflow.invoiceStatus, workflow.receiptSent]);
 
   return (
     <div className="card mb-4">
@@ -26,9 +44,13 @@ export function WorkflowStepper({ workflow }: { workflow: WorkflowState }) {
           </span>
         )}
       </div>
-      <ol className="px-3 py-3 flex gap-1 overflow-x-auto">
+      <ol ref={listRef} className="px-3 py-3 flex gap-1 overflow-x-auto scroll-smooth">
         {steps.map((step, i) => (
-          <li key={step.label} className="flex items-center gap-1 shrink-0">
+          <li
+            key={step.label}
+            ref={step.state === "current" ? currentRef : undefined}
+            className="flex items-center gap-1 shrink-0"
+          >
             <StepNode step={step} index={i} />
             {i < steps.length - 1 && (
               <span

@@ -9,7 +9,7 @@
 // owners/admins, but encryption defends against a leaked anon key bypass.
 
 import { createClient } from "@/lib/supabase/server";
-import { sendEmail, type EmailResult } from "@/lib/email";
+import { sendEmail, type EmailAttachment, type EmailResult } from "@/lib/email";
 import { decryptString } from "@/lib/crypto";
 import { canSend } from "@/lib/billing-server";
 
@@ -64,7 +64,7 @@ export async function loadOrgMessagingCreds(organization_id: string): Promise<Or
 
 export async function sendOrgEmail(
   organization_id: string,
-  args: { to: string; subject: string; html: string; replyTo?: string },
+  args: { to: string; subject: string; html: string; replyTo?: string; attachments?: EmailAttachment[] },
 ): Promise<EmailResult> {
   const creds = await loadOrgMessagingCreds(organization_id);
 

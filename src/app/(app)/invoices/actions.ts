@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
+import { invoicePdf } from "@/lib/document-pdf";
 import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { sendInvoiceReceiptEmail } from "@/lib/receipts";
@@ -334,7 +335,39 @@ export async function emailInvoiceToCustomer(id: string) {
     : docHtml;
 
   const subject = `Invoice ${fresh.invoice_number} from ${organization?.name}`;
-  await sendOrgEmail(organizationId, { to: cust.email, subject, html, replyTo: organization?.email ?? undefined });
+  const pdfBytes = await invoicePdf({
+    org: organization as any,
+    customer: cust,
+    invoiceNumber: fresh.invoice_number,
+    issueDate: fresh.issue_date,
+    dueDate: fresh.due_date,
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+    })),
+    subtotal: Number(fresh.subtotal),
+    discount: Number(fresh.discount_amount ?? 0),
+    taxRate: Number(fresh.tax_rate ?? 0),
+    tax: Number(fresh.tax_amount ?? 0),
+    total: Number(fresh.total),
+    amountPaid: Number(fresh.amount_paid ?? 0),
+    balanceDue: Number(fresh.balance_due ?? 0),
+    notes: fresh.notes,
+    terms: fresh.terms,
+    paid: false,
+    currency: (organization as any)?.currency,
+  });
+  await sendOrgEmail(organizationId, {
+    to: cust.email,
+    subject,
+    html,
+    replyTo: organization?.email ?? undefined,
+    attachments: [
+      { filename: `${fresh.invoice_number}.pdf`, content: pdfBytes, contentType: "application/pdf" },
+    ],
+  });
   await setInvoiceStatus(id, fresh.status === "draft" ? "sent" : fresh.status);
 }
 

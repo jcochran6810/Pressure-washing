@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionAndOrg } from "@/lib/org";
-import { invoiceHtml } from "@/lib/document-html";
+import { invoicePdf } from "@/lib/document-pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -14,19 +14,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .eq("organization_id", organizationId)
     .single();
   if (!inv) return new NextResponse("Not found", { status: 404 });
-  const items = (inv.invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const html = invoiceHtml({
-    org: organization,
-    customer: inv.customers as any,
-    invoiceNumber: inv.invoice_number,
-    issueDate: inv.issue_date,
-    dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
-    subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
-    tax: Number(inv.tax_amount), total: Number(inv.total),
-    amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
-    notes: inv.notes, terms: inv.terms, paid: inv.status === "paid",
-    currency: organization?.currency,
+  const items = ((inv as any).invoice_line_items as any[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const bytes = await invoicePdf({
+    org: organization as any,
+    customer: (inv as any).customers,
+    invoiceNumber: (inv as any).invoice_number,
+    issueDate: (inv as any).issue_date,
+    dueDate: (inv as any).due_date,
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+    })),
+    subtotal: Number((inv as any).subtotal),
+    discount: Number((inv as any).discount_amount ?? 0),
+    taxRate: Number((inv as any).tax_rate ?? 0),
+    tax: Number((inv as any).tax_amount ?? 0),
+    total: Number((inv as any).total),
+    amountPaid: Number((inv as any).amount_paid ?? 0),
+    balanceDue: Number((inv as any).balance_due ?? 0),
+    notes: (inv as any).notes,
+    terms: (inv as any).terms,
+    paid: (inv as any).status === "paid",
+    currency: (organization as any)?.currency,
   });
-  return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  return new NextResponse(Buffer.from(bytes), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${(inv as any).invoice_number}.pdf"`,
+    },
+  });
 }

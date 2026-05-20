@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { WorkflowState } from "@/lib/workflow";
 import { CopyButton } from "./copy-button";
-import { setEstimateStatus, emailEstimateToCustomer } from "@/app/(app)/estimates/actions";
+import { setEstimateStatus, emailEstimateToCustomer, sendEstimateViaTemplate } from "@/app/(app)/estimates/actions";
 import { setJobStatus } from "@/app/(app)/jobs/actions";
 import { emailInvoiceToCustomer, recordPayment, sendInvoiceReceipt } from "@/app/(app)/invoices/actions";
 import { ScheduleJobForm } from "./schedule-job-form";
@@ -10,10 +10,12 @@ export function NextStepBanner({
   workflow,
   approvalToken,
   customerHasEmail,
+  customerHasPhone,
 }: {
   workflow: WorkflowState;
   approvalToken?: string | null;
   customerHasEmail?: boolean;
+  customerHasPhone?: boolean;
 }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
@@ -41,28 +43,29 @@ export function NextStepBanner({
 
   // Step 2: estimate not yet sent
   if (workflow.estimateId && !workflow.estimateSent && !workflow.estimateAccepted) {
-    const emailEst = workflow.estimateId ? emailEstimateToCustomer.bind(null, workflow.estimateId) : null;
-    const markSent = workflow.estimateId ? setEstimateStatus.bind(null, workflow.estimateId, "sent") : null;
+    const emailEst = emailEstimateToCustomer.bind(null, workflow.estimateId);
+    const smsEst = sendEstimateViaTemplate.bind(null, workflow.estimateId, "sms");
     return (
       <Banner tone="primary" eyebrow="Next step" title="Send the estimate to your customer">
         <p className="text-sm text-gray-700 mb-3">
-          Emails a clean estimate document, marks it as sent, and unlocks the digital approval link.
+          Email attaches the PDF with one-click Accept, Request revision, and Decline links.
+          SMS sends a short link to the customer portal where they can download the PDF and
+          respond. Links are valid for 30 days.
         </p>
         <div className="flex flex-wrap gap-2">
-          {emailEst && (
-            <form action={emailEst}>
-              <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
-                ✉ Email estimate to customer
-              </button>
-            </form>
-          )}
-          {markSent && (
-            <form action={markSent}>
-              <button className="btn-secondary">Mark sent manually</button>
-            </form>
-          )}
+          <form action={emailEst}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
+              ✉ Send as Email
+            </button>
+          </form>
+          <form action={smsEst}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasPhone}>
+              💬 Send as SMS
+            </button>
+          </form>
         </div>
-        {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable sending.</p>}
+        {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable email sending.</p>}
+        {!customerHasPhone && <p className="text-xs text-amber-700 mt-1">Customer has no phone — add one to enable SMS sending.</p>}
       </Banner>
     );
   }

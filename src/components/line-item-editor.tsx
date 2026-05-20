@@ -5,8 +5,21 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { MeasurementModal } from "./measurement-modal";
 
-type Item = { description: string; quantity: number; unit_price: number; photos: string[] };
+// Quantity / unit_price are stored as raw strings so the input can be
+// emptied while typing (previously Number("") snapped them back to 0).
+// Calculations and form submission both coerce with Number().
+type Item = { description: string; quantity: string; unit_price: string; photos: string[] };
+type ItemInput = { description: string; quantity: number | string; unit_price: number | string; photos: string[] };
 type Service = { id: string; name: string; default_price: number | null };
+
+function toItem(i: ItemInput): Item {
+  return {
+    description: i.description ?? "",
+    quantity: i.quantity === null || i.quantity === undefined ? "" : String(i.quantity),
+    unit_price: i.unit_price === null || i.unit_price === undefined ? "" : String(i.unit_price),
+    photos: i.photos ?? [],
+  };
+}
 
 export function LineItemEditor({
   services,
@@ -18,16 +31,20 @@ export function LineItemEditor({
   initialAddress,
 }: {
   services: Service[];
-  initial?: Item[];
+  initial?: ItemInput[];
   taxRateInitial?: number;
   discountInitial?: number;
   organizationId: string;
   mapsApiKey?: string | null;
   initialAddress?: string;
 }) {
-  const [items, setItems] = useState<Item[]>(initial?.length ? initial : [{ description: "", quantity: 1, unit_price: 0, photos: [] }]);
-  const [taxRate, setTaxRate] = useState<number>(taxRateInitial ?? 0);
-  const [discount, setDiscount] = useState<number>(discountInitial ?? 0);
+  const [items, setItems] = useState<Item[]>(
+    initial?.length
+      ? initial.map(toItem)
+      : [{ description: "", quantity: "1", unit_price: "0", photos: [] }],
+  );
+  const [taxRate, setTaxRate] = useState<string>(taxRateInitial !== undefined && taxRateInitial !== null ? String(taxRateInitial) : "0");
+  const [discount, setDiscount] = useState<string>(discountInitial !== undefined && discountInitial !== null ? String(discountInitial) : "0");
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [measuringIdx, setMeasuringIdx] = useState<number | null>(null);
@@ -40,12 +57,12 @@ export function LineItemEditor({
     setItems((arr) => arr.filter((_, idx) => idx !== i));
   }
   function add() {
-    setItems((arr) => [...arr, { description: "", quantity: 1, unit_price: 0, photos: [] }]);
+    setItems((arr) => [...arr, { description: "", quantity: "1", unit_price: "0", photos: [] }]);
   }
   function applyService(i: number, serviceId: string) {
     const s = services.find((x) => x.id === serviceId);
     if (!s) return;
-    update(i, { description: s.name, unit_price: Number(s.default_price ?? 0) });
+    update(i, { description: s.name, unit_price: String(Number(s.default_price ?? 0)) });
   }
 
   async function handleFiles(i: number, files: FileList | null) {
@@ -89,7 +106,7 @@ export function LineItemEditor({
             const idx = measuringIdx;
             if (idx !== null && sqft > 0) {
               // Drop the measured sqft into the quantity column of that line.
-              update(idx, { quantity: sqft });
+              update(idx, { quantity: String(sqft) });
               // If the line has no description yet, hint at sqft so it's obvious why qty is so high.
               if (!items[idx].description.trim()) {
                 update(idx, { description: `${sqft.toLocaleString()} sqft area` });
@@ -134,7 +151,8 @@ export function LineItemEditor({
                   step="0.01"
                   min="0"
                   value={it.quantity}
-                  onChange={(e) => update(i, { quantity: Number(e.target.value) })}
+                  onChange={(e) => update(i, { quantity: e.target.value })}
+                  onFocus={(e) => { if (e.target.value === "0") e.target.select(); }}
                   className="w-full"
                 />
                 <p className="text-[10px] text-gray-500 mt-0.5 text-center">Quantity</p>
@@ -146,7 +164,8 @@ export function LineItemEditor({
                   step="0.01"
                   min="0"
                   value={it.unit_price}
-                  onChange={(e) => update(i, { unit_price: Number(e.target.value) })}
+                  onChange={(e) => update(i, { unit_price: e.target.value })}
+                  onFocus={(e) => { if (e.target.value === "0") e.target.select(); }}
                   className="w-full"
                 />
                 <p className="text-[10px] text-gray-500 mt-0.5 text-center">Amount</p>
@@ -206,17 +225,35 @@ export function LineItemEditor({
         <div className="space-y-2">
           <div>
             <label>Discount ($)</label>
-            <input name="discount_amount" type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="w-full" />
+            <input
+              name="discount_amount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              onFocus={(e) => { if (e.target.value === "0") e.target.select(); }}
+              className="w-full"
+            />
           </div>
           <div>
             <label>Tax rate (e.g. 0.0825 for 8.25%)</label>
-            <input name="tax_rate" type="number" step="0.0001" min="0" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="w-full" />
+            <input
+              name="tax_rate"
+              type="number"
+              step="0.0001"
+              min="0"
+              value={taxRate}
+              onChange={(e) => setTaxRate(e.target.value)}
+              onFocus={(e) => { if (e.target.value === "0") e.target.select(); }}
+              className="w-full"
+            />
           </div>
         </div>
         <div className="card-padded">
           <Row label="Subtotal" value={formatCurrency(subtotal)} />
-          <Row label="Discount" value={`− ${formatCurrency(discount)}`} />
-          <Row label={`Tax (${(taxRate * 100).toFixed(2)}%)`} value={formatCurrency(taxAmount)} />
+          <Row label="Discount" value={`− ${formatCurrency(Number(discount) || 0)}`} />
+          <Row label={`Tax (${((Number(taxRate) || 0) * 100).toFixed(2)}%)`} value={formatCurrency(taxAmount)} />
           <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-bold text-lg">
             <span>Total</span>
             <span>{formatCurrency(total)}</span>
