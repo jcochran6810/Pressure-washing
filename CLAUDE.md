@@ -34,6 +34,145 @@ If the user has uncommitted changes when "end session" is invoked, commit those 
 
 <!-- newest first; append a new dated entry on every "end session" -->
 
+### 2026-05-20 — claude/setup-wizard-trades-Csqqo
+
+Built the post-signup setup wizard plus a string of UX and data-model
+improvements on top of it. Six commits, all pushed to the working
+branch.
+
+**Setup wizard with trade-aware seeding** (`1f0bfd5`)
+- Schema (`20260603120000_onboarding_wizard.sql`): added
+  `organizations.onboarding_step / onboarding_completed_at /
+  onboarding_data`; rewrote `handle_new_user` so it no longer
+  unconditionally seeds pressure-washing services; backfilled existing
+  orgs with `onboarding_completed_at` so middleware doesn't trap them
+- 9 new trades: tree_service, fencing, snow_removal, garage_door,
+  concrete, irrigation, epoxy_flooring, solar_install, chimney_sweep
+- 7-step wizard route group at `src/app/(onboarding)/onboarding/{business,
+  trades,tier,addons,billing,messaging,finish}` with shared progress strip
+- `src/lib/onboarding.ts` + `onboarding-server.ts` — state machine, step
+  ordering, guard that prevents URL-skipping ahead
+- `src/lib/billing-checkout.ts` — Stripe Checkout session builder shared
+  by the wizard + the existing `/api/billing/checkout` route
+- `src/lib/trade-features.ts` — maps each trade to feature keys
+  (`chemicals`, `mix_calc`, `measure`, `equipment`, `recurring`); sidebar
+  filters nav by the union of selected trades
+- Middleware redirects any signed-in user with incomplete onboarding to
+  their current step; allowlists `/onboarding`, `/auth`, `/api/billing/
+  checkout`, `/legal`, `/api/stripe/webhook`
+- Auth callback routes new email-confirmed users straight into the wizard
+- Trimmed signup form to email + password + name (business info moved
+  into wizard step 1)
+
+**Tax info + labor / material split + draft editing** (`8425ae6`)
+- Schema (`20260604120000_tax_info_and_line_kinds.sql`):
+  - `organizations.legal_business_name`, `tax_id`, `tax_id_type`,
+    `state_tax_id`, `business_structure`, `tax_year_start_month`
+  - `estimate_line_items` + `invoice_line_items`: `kind`
+    (labor/material/service/other) + `taxable` boolean
+  - `estimates` + `invoices`: `labor_subtotal`, `materials_subtotal`,
+    `taxable_subtotal` rollups (back-filled `taxable_subtotal = subtotal`
+    on existing rows)
+  - `services.default_kind` + `default_taxable` so catalog dropdown
+    pre-fills the right kind / taxability
+- Wizard step 1 now collects legal name + EIN / SSN / ITIN + state
+  sales-tax ID + business structure + default sales-tax rate (all
+  optional; EINs normalize to digits-only and the doc footer prints
+  them as XX-XXXXXXX)
+- `src/lib/money.ts`: `computeDocumentTotals` now handles per-line
+  taxable + kind, pro-rates discounts across taxable / non-taxable
+  lines, returns labor/materials/taxable rollups; 4 new tests
+- `LineItemEditor` got a per-line kind dropdown + "Charge tax on this
+  line" checkbox with row-aligned hidden markers
+- Customer-facing HTML shows `Labor` / `Material` badges per line, a
+  "(non-taxable)" hint, a labor/materials breakdown under the subtotal,
+  a tax-id footer line
+- New `/estimates/[id]/edit` and `/invoices/[id]/edit` routes (draft
+  only; redirect with `?locked=1` once sent / accepted / paid). Helpers
+  extracted to `helpers.ts` because `actions.ts` is `"use server"`
+- Show pages add Edit buttons; convert estimate→invoice copies
+  kind/taxable/rollups
+
+**Paired labor/material entries + document-level pictures** (`8e801fc`)
+- Schema (`20260605120000_line_groups.sql`): `line_group uuid` on both
+  line-item tables to pair labor + material rows; indexes added
+- Editor entries now render two-column cards (labor blue / material
+  green); each side has its own description / qty / amount / taxable;
+  catalog picks auto-route by `default_kind`
+- "+ Add picture" button next to "+ Add line" uploads doc-level photos
+  with per-photo "Add notes" affordance; persists to
+  `photo_attachments` (kind=`reference`, note in `caption`); estimate
+  → invoice conversion carries pictures forward
+- Customer-facing HTML renders a "Pictures" gallery between line table
+  and footer
+
+**Expanded trade catalogs + Settings prompt** (`855e600`)
+- Roughly doubled every trade's seeded catalog (4-9 → 11-21 specialty
+  services). Highlights: pressure_washing adds composite-deck
+  restoration, oxidation removal, brick + masonry, oil/rust/graffiti
+  stains, awning/dumpster pad, paver sand; hvac adds refrigerant
+  recharge, ductwork, mini-split/heat pump installs, UV sanitizer;
+  plumbing adds sewer camera, hydro-jet, tankless/softener/sump pump;
+  electrical adds 200A panel, EV charger, generator transfer switch;
+  roofing adds full replacement, flashing, ridge vent, ice dam;
+  concrete adds exposed aggregate, mudjacking, poly foam leveling
+- Wizard finish step + `/services` page show "edit these in Services"
+  callouts explaining the catalog feeds the "Add from catalog" dropdown
+
+**Multi-material + per-line pictures + post-job invoice handoff**
+(`66a1817`)
+- Editor: each entry now allows one labor sub-row plus 1..N material
+  sub-rows with "+ Additional material" link; remove buttons appear
+  once a line has >1 material; materials JSON-encoded in
+  `entry_materials` field
+- Per-line "+ Add picture to this line" button uploads to bucket and
+  shows thumbnails inline; photos serialize as `entry_photos` JSON and
+  land on the first persisted row's `photo_urls` column
+- **PDF route bug fix**: `/api/documents/{estimates,invoices}/[id]/pdf`
+  were missing the `photo_attachments` join and `kind`/`taxable`/labor
+  /material subtotals; customers never saw pictures or breakdowns in
+  "View / Print". Fixed both routes.
+- Public `/quote/[token]` viewer: per-line kind badges, per-line photos,
+  doc-level "Pictures" gallery with notes
+- New migration `20260606120000_public_estimate_photos.sql` adds an
+  anon-SELECT RLS policy on `photo_attachments` for `kind='reference'`
+  photos whose parent estimate carries an `approval_token`, mirroring
+  the existing `public read by token` pattern
+- **Post-job-completion workflow**: marking a job complete now
+  redirects to `/invoices/[id]/edit?from=job` with a green banner so
+  the owner reviews + adds completion photos before sending. Auto-
+  drafted invoice carries forward kind/taxable/line_group/rollups from
+  the estimate (previously lost). Every job photo + estimate reference
+  photo gets propagated to `photo_attachments` with `invoice_id` and
+  `kind='reference'` so they're already there when the owner opens the
+  edit screen.
+
+**Job workflow checklist on the send log** (`3ad456e`)
+- `/messages` page now leads with a "Job workflow" table: one row per
+  job, customer name + 9 timestamp columns (estimate started, sent,
+  approved; job scheduled, completed; invoice drafted, sent; paid;
+  receipt sent) + derived status badge
+- Empty columns render as dim "—" so stalled jobs jump out
+- New component: `src/components/workflow-checklist.tsx`
+- Existing email/SMS log moved under an "Email & SMS log" header
+
+**Database ops**
+- Twice fully wiped `jason.cochran@universalhazard.com` (user + org
+  + cascade-linked data) for clean wizard re-tests
+- Wiped transactional data only for `cochranlawncare@gmail.com` —
+  receipt_log, payments, invoices, estimates, jobs (with cascades to
+  line items, photos, follow-ups, measurements, etc.) and stranded
+  `custom_field_values` rows. Kept user, org, customers, services,
+  onboarding state, settings.
+
+**Verification**
+- tsc clean across every commit
+- Tests: 32 passing (was 28; 4 new in money.test.ts cover mixed-tax /
+  pro-rated discount / kind rollups)
+- Production build green; all new routes (`/onboarding/*`,
+  `/estimates/[id]/edit`, `/invoices/[id]/edit`,
+  `/onboarding/billing/return`) registered
+
 ### 2026-05-19 — main (audit additions pulled into 8bc5eca baseline)
 
 After resetting main to `8bc5eca` (the user's preferred baseline from the

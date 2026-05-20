@@ -5,10 +5,21 @@ import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { estimateHtml } from "@/lib/document-html";
 import { estimateSchema, parseForm } from "@/lib/validation";
+import { isEstimateEditable } from "./helpers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
+type LineKind = "labor" | "material" | "service" | "other";
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  photos: string[];
+  kind: LineKind;
+  taxable: boolean;
+  line_group: string;
+};
+type DocPhoto = { url: string; note: string };
 
 async function nextNumber(prefix: string, orgId: string, supabase: any, field: "next_estimate_number" | "next_invoice_number") {
   // Both fields share the same counter going forward (see src/lib/numbering.ts).
@@ -17,28 +28,141 @@ async function nextNumber(prefix: string, orgId: string, supabase: any, field: "
   return nextDocumentNumber(supabase, orgId);
 }
 
+// The editor renders one entry per line_group; each entry posts a labor
+// sub-row (parallel arrays) plus an entry_materials JSON array carrying
+// every material sub-row for that entry. We flatten everything back to
+// per-row shape, drop blank sub-rows, and tag each persisted row with
+// its shared line_group so the edit view can re-pair them. Photos for
+// the entry get attached to whichever row lands first (labor preferred,
+// first material as a fallback).
 function parseLineItems(formData: FormData): LineItem[] {
-  const descs = formData.getAll("li_description") as string[];
-  const qtys = formData.getAll("li_quantity") as string[];
-  const prices = formData.getAll("li_unit_price") as string[];
-  const photoStrs = formData.getAll("li_photos") as string[];
+  const groups = formData.getAll("li_group") as string[];
+  const laborDescs = formData.getAll("labor_description") as string[];
+  const laborQtys = formData.getAll("labor_quantity") as string[];
+  const laborPrices = formData.getAll("labor_unit_price") as string[];
+  const laborMarkers = formData.getAll("labor_taxable_marker") as string[];
+  const entryMatStrs = formData.getAll("entry_materials") as string[];
+  const entryPhotoStrs = formData.getAll("entry_photos") as string[];
+
   const out: LineItem[] = [];
-  for (let i = 0; i < descs.length; i++) {
-    const d = (descs[i] || "").trim();
-    if (!d) continue;
-    let urls: string[] = [];
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+
+    // Photos attach to the first persisted row in this entry.
+    let photos: string[] = [];
     try {
-      const parsed = JSON.parse(photoStrs[i] || "[]");
-      if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
+      const arr = JSON.parse(entryPhotoStrs[i] || "[]");
+      if (Array.isArray(arr)) photos = arr.filter((u: unknown) => typeof u === "string");
     } catch {}
-    out.push({
-      description: d,
-      quantity: Number(qtys[i] || 1),
-      unit_price: Number(prices[i] || 0),
-      photos: urls,
-    });
+
+    const rowsForEntry: LineItem[] = [];
+
+    const laborDesc = (laborDescs[i] || "").trim();
+    if (laborDesc) {
+      rowsForEntry.push({
+        description: laborDesc,
+        quantity: Number(laborQtys[i] || 1),
+        unit_price: Number(laborPrices[i] || 0),
+        photos: [],
+        kind: "labor",
+        taxable: laborMarkers[i] != null ? laborMarkers[i] === "checked" : true,
+        line_group: group,
+      });
+    }
+
+    let materials: { description: string; quantity: number; unit_price: number; taxable: boolean }[] = [];
+    try {
+      const arr = JSON.parse(entryMatStrs[i] || "[]");
+      if (Array.isArray(arr)) materials = arr;
+    } catch {}
+    for (const m of materials) {
+      const desc = (m.description || "").trim();
+      if (!desc) continue;
+      rowsForEntry.push({
+        description: desc,
+        quantity: Number(m.quantity ?? 1),
+        unit_price: Number(m.unit_price ?? 0),
+        photos: [],
+        kind: "material",
+        taxable: m.taxable !== false,
+        line_group: group,
+      });
+    }
+
+    // Hang the entry's photos on the first persisted row.
+    if (rowsForEntry.length > 0 && photos.length > 0) {
+      rowsForEntry[0].photos = photos;
+    }
+    out.push(...rowsForEntry);
   }
   return out;
+}
+
+function parseDocPhotos(formData: FormData): DocPhoto[] {
+  const urls = formData.getAll("doc_photo_url") as string[];
+  const notes = formData.getAll("doc_photo_note") as string[];
+  const out: DocPhoto[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = (urls[i] || "").trim();
+    if (!url) continue;
+    out.push({ url, note: (notes[i] || "").trim() });
+  }
+  return out;
+}
+
+async function syncDocPhotos(
+  supabase: any,
+  organizationId: string,
+  target: { estimate_id?: string; invoice_id?: string },
+  customer_id: string | null,
+  photos: DocPhoto[],
+) {
+  // Replace, don't merge — the editor always sends the full current set,
+  // and the user might have removed a picture between edits.
+  const matchCol = target.estimate_id ? "estimate_id" : "invoice_id";
+  const matchId = target.estimate_id ?? target.invoice_id;
+  await supabase
+    .from("photo_attachments")
+    .delete()
+    .eq(matchCol, matchId)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (!photos.length) return;
+  await supabase.from("photo_attachments").insert(
+    photos.map((p) => ({
+      organization_id: organizationId,
+      customer_id: customer_id ?? null,
+      estimate_id: target.estimate_id ?? null,
+      invoice_id: target.invoice_id ?? null,
+      kind: "reference",
+      url: p.url,
+      caption: p.note || null,
+    })),
+  );
+}
+
+function computeRollups(items: LineItem[]) {
+  let subtotal = 0;
+  let taxableSubtotal = 0;
+  let laborSubtotal = 0;
+  let materialsSubtotal = 0;
+  for (const i of items) {
+    const line = i.quantity * i.unit_price;
+    subtotal += line;
+    if (i.taxable) taxableSubtotal += line;
+    if (i.kind === "labor") laborSubtotal += line;
+    if (i.kind === "material") materialsSubtotal += line;
+  }
+  return {
+    subtotal: round2(subtotal),
+    taxableSubtotal: round2(taxableSubtotal),
+    laborSubtotal: round2(laborSubtotal),
+    materialsSubtotal: round2(materialsSubtotal),
+  };
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
 }
 
 export async function createEstimate(formData: FormData) {
@@ -59,19 +183,43 @@ export async function createEstimate(formData: FormData) {
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
   const items = parseLineItems(formData);
 
-  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-
-  // Apply global min job price
+  // Apply global min job price. We grow the lowest-priced line up to the
+  // min rather than tacking on a synthetic charge unless there's nothing
+  // to grow — keeps the labor/materials split intact for legitimate jobs.
   const globalMin = Number(organization?.global_min_job_price ?? 0);
-  if (globalMin > 0 && subtotal < globalMin) {
-    subtotal = globalMin;
+  const preMinSubtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  if (globalMin > 0 && preMinSubtotal < globalMin) {
+    const syntheticGroup = crypto.randomUUID();
     if (items.length === 0) {
-      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [] });
+      items.push({
+        description: "Minimum service charge",
+        quantity: 1,
+        unit_price: globalMin,
+        photos: [],
+        kind: "service",
+        taxable: true,
+        line_group: syntheticGroup,
+      });
+    } else {
+      items.push({
+        description: "Minimum service charge adjustment",
+        quantity: 1,
+        unit_price: round2(globalMin - preMinSubtotal),
+        photos: [],
+        kind: "service",
+        taxable: false,
+        line_group: syntheticGroup,
+      });
     }
   }
 
-  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
-  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  // Doc-level rollups. Discount is pro-rated across taxable / non-taxable
+  // so a mixed-tax invoice doesn't accidentally over- or under-tax.
+  const r = computeRollups(items);
+  const taxablePortion = r.subtotal > 0 ? round2((r.taxableSubtotal / r.subtotal) * discount_amount) : 0;
+  const taxable_subtotal_after_discount = Math.max(0, round2(r.taxableSubtotal - taxablePortion));
+  const tax_amount = round2(taxable_subtotal_after_discount * tax_rate);
+  const total = round2(Math.max(0, r.subtotal - discount_amount) + tax_amount);
 
   // Auto-deposit if total exceeds threshold
   const depositThreshold = Number(organization?.deposit_threshold ?? 0);
@@ -85,7 +233,12 @@ export async function createEstimate(formData: FormData) {
     .from("estimates")
     .insert({
       organization_id: organizationId, customer_id, property_id, estimate_number,
-      issue_date, expires_at, tax_rate, discount_amount, tax_amount, subtotal, total,
+      issue_date, expires_at, tax_rate, discount_amount, tax_amount,
+      subtotal: r.subtotal,
+      labor_subtotal: r.laborSubtotal,
+      materials_subtotal: r.materialsSubtotal,
+      taxable_subtotal: taxable_subtotal_after_discount,
+      total,
       notes, terms, status: "draft",
       duration_minutes, buffer_minutes, deposit_amount, approval_token,
     })
@@ -103,12 +256,110 @@ export async function createEstimate(formData: FormData) {
         total: i.quantity * i.unit_price,
         sort_order: idx,
         photo_urls: i.photos,
+        kind: i.kind,
+        taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
   }
 
+  const docPhotos = parseDocPhotos(formData);
+  if (docPhotos.length) {
+    await syncDocPhotos(supabase, organizationId, { estimate_id: est.id }, customer_id, docPhotos);
+  }
+
   revalidatePath("/estimates");
   redirect(`/estimates/${est.id}`);
+}
+
+export async function updateEstimate(id: string, formData: FormData) {
+  const { supabase, organizationId, organization } = await getSessionAndOrg();
+  const { data: existing } = await supabase
+    .from("estimates")
+    .select("id, status, approval_token, estimate_number")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (!existing) throw new Error("Estimate not found");
+  if (!isEstimateEditable((existing as any).status)) {
+    throw new Error("This estimate has already been sent and can't be edited. Duplicate it to make changes.");
+  }
+
+  const validated = parseForm(estimateSchema, formData);
+  const customer_id = validated.customer_id;
+  const property_id = validated.property_id ?? null;
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const defaultExpiry = new Date(issue_date);
+  defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+  const expires_at = validated.expires_at || defaultExpiry.toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const notes = validated.notes ?? null;
+  const terms = validated.terms ?? null;
+  const duration_minutes = Number(formData.get("duration_minutes") || 0) || null;
+  const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
+  const items = parseLineItems(formData);
+
+  const r = computeRollups(items);
+  const taxablePortion = r.subtotal > 0 ? round2((r.taxableSubtotal / r.subtotal) * discount_amount) : 0;
+  const taxable_subtotal_after_discount = Math.max(0, round2(r.taxableSubtotal - taxablePortion));
+  const tax_amount = round2(taxable_subtotal_after_discount * tax_rate);
+  const total = round2(Math.max(0, r.subtotal - discount_amount) + tax_amount);
+
+  // Re-evaluate the auto-deposit so a discount that drops the total below
+  // the threshold removes it, and a new line that pushes it over adds it.
+  const depositThreshold = Number(organization?.deposit_threshold ?? 0);
+  const depositPct = Number(organization?.deposit_percentage ?? 0.25);
+  const deposit_amount = depositThreshold > 0 && total >= depositThreshold ? round2(total * depositPct) : null;
+
+  const { error: updErr } = await supabase
+    .from("estimates")
+    .update({
+      customer_id, property_id,
+      issue_date, expires_at,
+      tax_rate, discount_amount, tax_amount,
+      subtotal: r.subtotal,
+      labor_subtotal: r.laborSubtotal,
+      materials_subtotal: r.materialsSubtotal,
+      taxable_subtotal: taxable_subtotal_after_discount,
+      total,
+      notes, terms,
+      duration_minutes, buffer_minutes,
+      deposit_amount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+  if (updErr) throw new Error(updErr.message);
+
+  // Rewrite line items wholesale. The set is small enough that this is
+  // simpler than diffing; the approval token doesn't change so any quote
+  // link the customer might have hasn't gone out yet (we'd have rejected
+  // the edit above) and won't be confused.
+  await supabase.from("estimate_line_items").delete().eq("estimate_id", id);
+  if (items.length) {
+    await supabase.from("estimate_line_items").insert(
+      items.map((i, idx) => ({
+        estimate_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: round2(i.quantity * i.unit_price),
+        sort_order: idx,
+        photo_urls: i.photos,
+        kind: i.kind,
+        taxable: i.taxable,
+        line_group: i.line_group,
+      })),
+    );
+  }
+
+  const docPhotos = parseDocPhotos(formData);
+  await syncDocPhotos(supabase, organizationId, { estimate_id: id }, customer_id, docPhotos);
+
+  revalidatePath(`/estimates/${id}`);
+  revalidatePath("/estimates");
+  redirect(`/estimates/${id}`);
 }
 
 export async function setEstimateStatus(id: string, status: string) {
@@ -195,6 +446,9 @@ export async function convertEstimateToInvoice(estimateId: string) {
       tax_rate: est.tax_rate,
       tax_amount: est.tax_amount,
       discount_amount: est.discount_amount,
+      labor_subtotal: est.labor_subtotal ?? 0,
+      materials_subtotal: est.materials_subtotal ?? 0,
+      taxable_subtotal: est.taxable_subtotal ?? est.subtotal,
       total: est.total,
       balance_due: est.total,
       notes: est.notes,
@@ -215,9 +469,34 @@ export async function convertEstimateToInvoice(estimateId: string) {
         total: li.total,
         sort_order: li.sort_order,
         photo_urls: li.photo_urls ?? [],
+        kind: li.kind ?? "service",
+        taxable: li.taxable ?? true,
+        line_group: li.line_group ?? null,
       })),
     );
   }
+
+  // Carry document-level reference photos from the estimate over to the
+  // invoice so the customer sees the same job pictures on both docs.
+  const { data: estPhotos } = await supabase
+    .from("photo_attachments")
+    .select("url, caption, customer_id")
+    .eq("estimate_id", est.id)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (estPhotos?.length) {
+    await supabase.from("photo_attachments").insert(
+      (estPhotos as any[]).map((p) => ({
+        organization_id: organizationId,
+        customer_id: p.customer_id,
+        invoice_id: inv.id,
+        kind: "reference",
+        url: p.url,
+        caption: p.caption,
+      })),
+    );
+  }
+
   await supabase.from("estimates").update({ status: "converted" }).eq("id", est.id);
 
   // Make sure a job exists too, marked completed since we're skipping straight to invoice.
@@ -233,13 +512,23 @@ export async function convertEstimateToInvoice(estimateId: string) {
 
 async function loadEstimateForDoc(id: string) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { data: est } = await supabase
-    .from("estimates")
-    .select("*, customers(*), estimate_line_items(*)")
-    .eq("id", id)
-    .eq("organization_id", organizationId)
-    .single();
+  const [{ data: est }, { data: photos }] = await Promise.all([
+    supabase
+      .from("estimates")
+      .select("*, customers(*), estimate_line_items(*)")
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .single(),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption, created_at")
+      .eq("estimate_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
+  ]);
   if (!est) throw new Error("Estimate not found");
+  (est as any).docPhotos = (photos ?? []).map((p: any) => ({ url: p.url, note: p.caption ?? null }));
   return { supabase, organizationId, organization, est };
 }
 
@@ -251,10 +540,26 @@ function estimateDocHtml(organization: any, est: any) {
     estimateNumber: est.estimate_number,
     issueDate: est.issue_date,
     expiresAt: est.expires_at,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
-    subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
-    tax: Number(est.tax_amount), total: Number(est.total),
-    notes: est.notes, terms: est.terms,
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      kind: li.kind ?? "service",
+      taxable: li.taxable ?? true,
+    })),
+    docPhotos: (est.docPhotos as { url: string; note: string | null }[]) ?? [],
+    subtotal: Number(est.subtotal),
+    discount: Number(est.discount_amount),
+    taxRate: Number(est.tax_rate),
+    tax: Number(est.tax_amount),
+    total: Number(est.total),
+    laborSubtotal: Number(est.labor_subtotal ?? 0),
+    materialsSubtotal: Number(est.materials_subtotal ?? 0),
+    taxableSubtotal: Number(est.taxable_subtotal ?? est.subtotal ?? 0),
+    notes: est.notes,
+    terms: est.terms,
     currency: organization?.currency,
   });
 }

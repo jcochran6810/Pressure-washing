@@ -9,7 +9,6 @@ import { PLATFORM_NAME } from "@/lib/platform";
 export default function SignupPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
-  const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        data: { full_name: fullName, company_name: companyName },
+        data: { full_name: fullName },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -36,10 +35,12 @@ export default function SignupPage() {
       return;
     }
     if (data.session) {
-      router.push("/dashboard");
+      // Brand-new account → wizard. The middleware would catch this too,
+      // but routing directly skips a redirect hop.
+      router.push("/onboarding/business");
       router.refresh();
     } else {
-      setInfo("Check your email to confirm your account.");
+      setInfo("Check your email to confirm your account, then we'll walk you through setup.");
     }
   }
 
@@ -51,15 +52,14 @@ export default function SignupPage() {
           {PLATFORM_NAME}
         </Link>
         <div className="card-padded">
-          <h1 className="text-xl font-semibold mb-4">Create your account</h1>
+          <h1 className="text-xl font-semibold mb-1">Create your account</h1>
+          <p className="text-sm text-gray-600 mb-4">
+            You&rsquo;ll add business + trade details in the next few steps.
+          </p>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label>Your name</label>
               <input required value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full" />
-            </div>
-            <div>
-              <label>Company name</label>
-              <input required value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full" placeholder="e.g. Acme Home Services" />
             </div>
             <div>
               <label>Email</label>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionAndOrg } from "@/lib/org";
 import { setInvoiceStatus, recordPayment, createStripePaymentLink, deleteInvoice, saveInvoiceToDrive, emailInvoiceToCustomer, sendInvoiceViaTemplate } from "../actions";
+import { isInvoiceEditable } from "../helpers";
 import { pushInvoiceToQboAction } from "@/app/(app)/accounting/actions";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { NextStepBanner } from "@/components/next-step-banner";
@@ -58,6 +59,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isInvoiceEditable(inv.status) && (
+            <Link href={`/invoices/${inv.id}/edit`} className="btn-secondary">Edit</Link>
+          )}
           <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
           <form action={emailInv}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
           <form action={sendEmailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>

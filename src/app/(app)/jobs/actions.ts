@@ -56,6 +56,9 @@ export async function setJobStatus(id: string, status: string) {
 
   // When the owner marks a job completed, auto-draft an invoice from the linked
   // estimate (or from the job total) so the next workflow step is one click away.
+  // We then redirect the owner straight to the invoice edit page so they can
+  // review line items, add completion photos, tweak prices, and only then send.
+  let createdInvoiceId: string | null = null;
   if (status === "completed") {
     const { data: existing } = await supabase
       .from("invoices")
@@ -63,7 +66,9 @@ export async function setJobStatus(id: string, status: string) {
       .eq("job_id", id)
       .eq("organization_id", organizationId)
       .maybeSingle();
-    if (!existing) {
+    if (existing) {
+      createdInvoiceId = (existing as any).id as string;
+    } else {
       const { data: job } = await supabase
         .from("jobs")
         .select("customer_id, estimate_id, total_amount, title")
@@ -97,6 +102,12 @@ export async function setJobStatus(id: string, status: string) {
                 tax_rate: est.tax_rate,
                 tax_amount: est.tax_amount,
                 discount_amount: est.discount_amount,
+                // Carry the labor/materials/taxable rollups across so the
+                // generated invoice matches the estimate the customer
+                // already saw.
+                labor_subtotal: est.labor_subtotal ?? 0,
+                materials_subtotal: est.materials_subtotal ?? 0,
+                taxable_subtotal: est.taxable_subtotal ?? est.subtotal,
                 total: est.total,
                 balance_due: est.total,
                 notes: est.notes,
@@ -104,18 +115,25 @@ export async function setJobStatus(id: string, status: string) {
               })
               .select("id")
               .single();
-            if (inv && est.estimate_line_items?.length) {
-              await supabase.from("invoice_line_items").insert(
-                est.estimate_line_items.map((li: any) => ({
-                  invoice_id: inv.id,
-                  description: li.description,
-                  quantity: li.quantity,
-                  unit_price: li.unit_price,
-                  total: li.total,
-                  sort_order: li.sort_order,
-                  photo_urls: li.photo_urls ?? [],
-                })),
-              );
+            if (inv) {
+              createdInvoiceId = (inv as any).id as string;
+              if (est.estimate_line_items?.length) {
+                await supabase.from("invoice_line_items").insert(
+                  est.estimate_line_items.map((li: any) => ({
+                    invoice_id: inv.id,
+                    description: li.description,
+                    quantity: li.quantity,
+                    unit_price: li.unit_price,
+                    total: li.total,
+                    sort_order: li.sort_order,
+                    photo_urls: li.photo_urls ?? [],
+                    kind: li.kind ?? "service",
+                    taxable: li.taxable ?? true,
+                    line_group: li.line_group ?? null,
+                  })),
+                );
+              }
+              await copyDocPhotosToInvoice(supabase, organizationId, id, est.id, (inv as any).id);
             }
           }
         } else {
@@ -133,20 +151,27 @@ export async function setJobStatus(id: string, status: string) {
               issue_date: new Date().toISOString().slice(0, 10),
               due_date: due.toISOString().slice(0, 10),
               subtotal: amount,
+              taxable_subtotal: amount,
               total: amount,
               balance_due: amount,
             })
             .select("id")
             .single();
-          if (inv && amount > 0) {
-            await supabase.from("invoice_line_items").insert([{
-              invoice_id: inv.id,
-              description: job.title,
-              quantity: 1,
-              unit_price: amount,
-              total: amount,
-              sort_order: 0,
-            }]);
+          if (inv) {
+            createdInvoiceId = (inv as any).id as string;
+            if (amount > 0) {
+              await supabase.from("invoice_line_items").insert([{
+                invoice_id: inv.id,
+                description: job.title,
+                quantity: 1,
+                unit_price: amount,
+                total: amount,
+                sort_order: 0,
+                kind: "service",
+                taxable: true,
+              }]);
+            }
+            await copyDocPhotosToInvoice(supabase, organizationId, id, null, (inv as any).id);
           }
         }
       }
@@ -156,6 +181,62 @@ export async function setJobStatus(id: string, status: string) {
   revalidatePath("/jobs");
   revalidatePath(`/jobs/${id}`);
   revalidatePath("/invoices");
+
+  // Land the owner on the editable invoice draft so the "review, add
+  // completion pictures, then send" workflow is one click away rather
+  // than buried under /invoices.
+  if (status === "completed" && createdInvoiceId) {
+    redirect(`/invoices/${createdInvoiceId}/edit?from=job`);
+  }
+}
+
+// Carry every "before" / "after" / "reference" photo attached to the job
+// (and any reference photos already on the estimate) over to the new
+// invoice so completion pictures flow into the customer-facing invoice
+// without the owner having to re-upload anything. Stored as reference
+// photos so they render in the doc's "Pictures" section.
+async function copyDocPhotosToInvoice(
+  supabase: any,
+  organizationId: string,
+  jobId: string,
+  estimateId: string | null,
+  invoiceId: string,
+) {
+  const { data: jobPhotos } = await supabase
+    .from("photo_attachments")
+    .select("url, caption, customer_id")
+    .eq("job_id", jobId)
+    .eq("organization_id", organizationId);
+
+  const { data: estPhotos } = estimateId
+    ? await supabase
+        .from("photo_attachments")
+        .select("url, caption, customer_id")
+        .eq("estimate_id", estimateId)
+        .eq("organization_id", organizationId)
+        .eq("kind", "reference")
+    : { data: [] as any[] };
+
+  const merged = [...(jobPhotos ?? []), ...(estPhotos ?? [])];
+  if (!merged.length) return;
+  // Dedupe by URL so an estimate photo that already lives on the invoice
+  // (via convertEstimateToInvoice earlier) doesn't double-up.
+  const seen = new Set<string>();
+  const rows = merged
+    .filter((p: any) => {
+      if (seen.has(p.url)) return false;
+      seen.add(p.url);
+      return true;
+    })
+    .map((p: any) => ({
+      organization_id: organizationId,
+      customer_id: p.customer_id ?? null,
+      invoice_id: invoiceId,
+      kind: "reference",
+      url: p.url,
+      caption: p.caption ?? null,
+    }));
+  if (rows.length) await supabase.from("photo_attachments").insert(rows);
 }
 
 async function nextInvoiceNumber(supabase: any, organizationId: string) {

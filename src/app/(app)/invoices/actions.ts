@@ -6,30 +6,145 @@ import { sendOrgEmail } from "@/lib/org-messaging";
 import { uploadHtmlToDrive } from "@/lib/drive-uploader";
 import { invoiceHtml } from "@/lib/document-html";
 import { invoiceSchema, paymentSchema, parseForm } from "@/lib/validation";
+import { isInvoiceEditable } from "./helpers";
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 import { sendInvoiceReceiptEmail } from "@/lib/receipts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
+type LineKind = "labor" | "material" | "service" | "other";
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  photos: string[];
+  kind: LineKind;
+  taxable: boolean;
+  line_group: string;
+};
+type DocPhoto = { url: string; note: string };
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 function parseLineItems(formData: FormData): LineItem[] {
-  const descs = formData.getAll("li_description") as string[];
-  const qtys = formData.getAll("li_quantity") as string[];
-  const prices = formData.getAll("li_unit_price") as string[];
-  const photoStrs = formData.getAll("li_photos") as string[];
+  const groups = formData.getAll("li_group") as string[];
+  const laborDescs = formData.getAll("labor_description") as string[];
+  const laborQtys = formData.getAll("labor_quantity") as string[];
+  const laborPrices = formData.getAll("labor_unit_price") as string[];
+  const laborMarkers = formData.getAll("labor_taxable_marker") as string[];
+  const entryMatStrs = formData.getAll("entry_materials") as string[];
+  const entryPhotoStrs = formData.getAll("entry_photos") as string[];
+
   const out: LineItem[] = [];
-  for (let i = 0; i < descs.length; i++) {
-    const d = (descs[i] || "").trim();
-    if (!d) continue;
-    let urls: string[] = [];
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+
+    let photos: string[] = [];
     try {
-      const parsed = JSON.parse(photoStrs[i] || "[]");
-      if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
+      const arr = JSON.parse(entryPhotoStrs[i] || "[]");
+      if (Array.isArray(arr)) photos = arr.filter((u: unknown) => typeof u === "string");
     } catch {}
-    out.push({ description: d, quantity: Number(qtys[i] || 1), unit_price: Number(prices[i] || 0), photos: urls });
+
+    const rowsForEntry: LineItem[] = [];
+
+    const laborDesc = (laborDescs[i] || "").trim();
+    if (laborDesc) {
+      rowsForEntry.push({
+        description: laborDesc,
+        quantity: Number(laborQtys[i] || 1),
+        unit_price: Number(laborPrices[i] || 0),
+        photos: [],
+        kind: "labor",
+        taxable: laborMarkers[i] != null ? laborMarkers[i] === "checked" : true,
+        line_group: group,
+      });
+    }
+
+    let materials: { description: string; quantity: number; unit_price: number; taxable: boolean }[] = [];
+    try {
+      const arr = JSON.parse(entryMatStrs[i] || "[]");
+      if (Array.isArray(arr)) materials = arr;
+    } catch {}
+    for (const m of materials) {
+      const desc = (m.description || "").trim();
+      if (!desc) continue;
+      rowsForEntry.push({
+        description: desc,
+        quantity: Number(m.quantity ?? 1),
+        unit_price: Number(m.unit_price ?? 0),
+        photos: [],
+        kind: "material",
+        taxable: m.taxable !== false,
+        line_group: group,
+      });
+    }
+
+    if (rowsForEntry.length > 0 && photos.length > 0) {
+      rowsForEntry[0].photos = photos;
+    }
+    out.push(...rowsForEntry);
   }
   return out;
+}
+
+function parseDocPhotos(formData: FormData): DocPhoto[] {
+  const urls = formData.getAll("doc_photo_url") as string[];
+  const notes = formData.getAll("doc_photo_note") as string[];
+  const out: DocPhoto[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = (urls[i] || "").trim();
+    if (!url) continue;
+    out.push({ url, note: (notes[i] || "").trim() });
+  }
+  return out;
+}
+
+async function syncInvoiceDocPhotos(
+  supabase: any,
+  organizationId: string,
+  invoice_id: string,
+  customer_id: string | null,
+  photos: DocPhoto[],
+) {
+  await supabase
+    .from("photo_attachments")
+    .delete()
+    .eq("invoice_id", invoice_id)
+    .eq("organization_id", organizationId)
+    .eq("kind", "reference");
+  if (!photos.length) return;
+  await supabase.from("photo_attachments").insert(
+    photos.map((p) => ({
+      organization_id: organizationId,
+      customer_id: customer_id ?? null,
+      invoice_id,
+      kind: "reference",
+      url: p.url,
+      caption: p.note || null,
+    })),
+  );
+}
+
+function computeRollups(items: LineItem[]) {
+  let subtotal = 0;
+  let taxableSubtotal = 0;
+  let laborSubtotal = 0;
+  let materialsSubtotal = 0;
+  for (const i of items) {
+    const line = i.quantity * i.unit_price;
+    subtotal += line;
+    if (i.taxable) taxableSubtotal += line;
+    if (i.kind === "labor") laborSubtotal += line;
+    if (i.kind === "material") materialsSubtotal += line;
+  }
+  return {
+    subtotal: round2(subtotal),
+    taxableSubtotal: round2(taxableSubtotal),
+    laborSubtotal: round2(laborSubtotal),
+    materialsSubtotal: round2(materialsSubtotal),
+  };
 }
 
 async function nextInvoiceNumber(orgId: string, supabase: any) {
@@ -46,9 +161,13 @@ export async function createInvoice(formData: FormData) {
   const tax_rate = validated.tax_rate ?? 0;
   const discount_amount = validated.discount_amount ?? 0;
   const items = parseLineItems(formData);
-  const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
-  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+
+  const r = computeRollups(items);
+  const taxablePortion = r.subtotal > 0 ? round2((r.taxableSubtotal / r.subtotal) * discount_amount) : 0;
+  const taxable_subtotal_after_discount = Math.max(0, round2(r.taxableSubtotal - taxablePortion));
+  const tax_amount = round2(taxable_subtotal_after_discount * tax_rate);
+  const total = round2(Math.max(0, r.subtotal - discount_amount) + tax_amount);
+
   const notes = validated.notes ?? null;
   const terms = validated.terms ?? null;
 
@@ -56,7 +175,25 @@ export async function createInvoice(formData: FormData) {
 
   const { data: inv, error } = await supabase
     .from("invoices")
-    .insert({ organization_id: organizationId, customer_id, invoice_number, issue_date, due_date, tax_rate, discount_amount, tax_amount, subtotal, total, balance_due: total, notes, terms, status: "draft" })
+    .insert({
+      organization_id: organizationId,
+      customer_id,
+      invoice_number,
+      issue_date,
+      due_date,
+      tax_rate,
+      discount_amount,
+      tax_amount,
+      subtotal: r.subtotal,
+      labor_subtotal: r.laborSubtotal,
+      materials_subtotal: r.materialsSubtotal,
+      taxable_subtotal: taxable_subtotal_after_discount,
+      total,
+      balance_due: total,
+      notes,
+      terms,
+      status: "draft",
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -71,12 +208,96 @@ export async function createInvoice(formData: FormData) {
         total: i.quantity * i.unit_price,
         sort_order: idx,
         photo_urls: i.photos,
+        kind: i.kind,
+        taxable: i.taxable,
+        line_group: i.line_group,
       })),
     );
   }
 
+  const docPhotos = parseDocPhotos(formData);
+  if (docPhotos.length) {
+    await syncInvoiceDocPhotos(supabase, organizationId, inv.id, customer_id, docPhotos);
+  }
+
   revalidatePath("/invoices");
   redirect(`/invoices/${inv.id}`);
+}
+
+export async function updateInvoice(id: string, formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("id, status, invoice_number, amount_paid")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (!existing) throw new Error("Invoice not found");
+  if (!isInvoiceEditable((existing as any).status)) {
+    throw new Error("This invoice has already been sent and can't be edited. Duplicate it to make changes.");
+  }
+
+  const validated = parseForm(invoiceSchema, formData);
+  const customer_id = validated.customer_id;
+  const due_date = validated.due_date || null;
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const items = parseLineItems(formData);
+  const notes = validated.notes ?? null;
+  const terms = validated.terms ?? null;
+
+  const r = computeRollups(items);
+  const taxablePortion = r.subtotal > 0 ? round2((r.taxableSubtotal / r.subtotal) * discount_amount) : 0;
+  const taxable_subtotal_after_discount = Math.max(0, round2(r.taxableSubtotal - taxablePortion));
+  const tax_amount = round2(taxable_subtotal_after_discount * tax_rate);
+  const total = round2(Math.max(0, r.subtotal - discount_amount) + tax_amount);
+  // Drafts can't carry partial payments, but defensively keep amount_paid
+  // pinned to whatever it was and recompute balance_due from the new total.
+  const amount_paid = Number((existing as any).amount_paid ?? 0);
+  const balance_due = round2(Math.max(0, total - amount_paid));
+
+  const { error } = await supabase
+    .from("invoices")
+    .update({
+      customer_id, issue_date, due_date,
+      tax_rate, discount_amount, tax_amount,
+      subtotal: r.subtotal,
+      labor_subtotal: r.laborSubtotal,
+      materials_subtotal: r.materialsSubtotal,
+      taxable_subtotal: taxable_subtotal_after_discount,
+      total, balance_due,
+      notes, terms,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("invoice_line_items").delete().eq("invoice_id", id);
+  if (items.length) {
+    await supabase.from("invoice_line_items").insert(
+      items.map((i, idx) => ({
+        invoice_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: round2(i.quantity * i.unit_price),
+        sort_order: idx,
+        photo_urls: i.photos,
+        kind: i.kind,
+        taxable: i.taxable,
+        line_group: i.line_group,
+      })),
+    );
+  }
+
+  const docPhotos = parseDocPhotos(formData);
+  await syncInvoiceDocPhotos(supabase, organizationId, id, customer_id, docPhotos);
+
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${id}`);
 }
 
 export async function setInvoiceStatus(id: string, status: string) {
@@ -248,13 +469,23 @@ export async function createStripePaymentLink(invoiceId: string) {
 
 async function loadInvoiceForDoc(id: string) {
   const { supabase, organizationId, organization } = await getSessionAndOrg();
-  const { data: inv } = await supabase
-    .from("invoices")
-    .select("*, customers(*), invoice_line_items(*)")
-    .eq("id", id)
-    .eq("organization_id", organizationId)
-    .single();
+  const [{ data: inv }, { data: photos }] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select("*, customers(*), invoice_line_items(*)")
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .single(),
+    supabase
+      .from("photo_attachments")
+      .select("url, caption, created_at")
+      .eq("invoice_id", id)
+      .eq("organization_id", organizationId)
+      .eq("kind", "reference")
+      .order("created_at", { ascending: true }),
+  ]);
   if (!inv) throw new Error("Invoice not found");
+  (inv as any).docPhotos = (photos ?? []).map((p: any) => ({ url: p.url, note: p.caption ?? null }));
   return { supabase, organizationId, organization, inv };
 }
 
@@ -267,10 +498,22 @@ export async function saveInvoiceToDrive(id: string) {
     invoiceNumber: inv.invoice_number,
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      kind: li.kind ?? "service",
+      taxable: li.taxable ?? true,
+    })),
+    docPhotos: ((inv as any).docPhotos as { url: string; note: string | null }[]) ?? [],
     subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
     tax: Number(inv.tax_amount), total: Number(inv.total),
     amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
+    laborSubtotal: Number(inv.labor_subtotal ?? 0),
+    materialsSubtotal: Number(inv.materials_subtotal ?? 0),
+    taxableSubtotal: Number(inv.taxable_subtotal ?? inv.subtotal ?? 0),
     notes: inv.notes, terms: inv.terms, paid: inv.status === "paid",
     currency: organization?.currency,
   });
@@ -314,10 +557,22 @@ export async function emailInvoiceToCustomer(id: string) {
     invoiceNumber: fresh.invoice_number,
     issueDate: fresh.issue_date,
     dueDate: fresh.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      kind: li.kind ?? "service",
+      taxable: li.taxable ?? true,
+    })),
+    docPhotos: ((fresh as any).docPhotos as { url: string; note: string | null }[]) ?? [],
     subtotal: Number(fresh.subtotal), discount: Number(fresh.discount_amount), taxRate: Number(fresh.tax_rate),
     tax: Number(fresh.tax_amount), total: Number(fresh.total),
     amountPaid: Number(fresh.amount_paid), balanceDue: Number(fresh.balance_due),
+    laborSubtotal: Number(fresh.labor_subtotal ?? 0),
+    materialsSubtotal: Number(fresh.materials_subtotal ?? 0),
+    taxableSubtotal: Number(fresh.taxable_subtotal ?? fresh.subtotal ?? 0),
     notes: fresh.notes, terms: fresh.terms, paid: false,
     currency: organization?.currency,
   });

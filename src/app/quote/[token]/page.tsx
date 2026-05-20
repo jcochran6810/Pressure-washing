@@ -30,6 +30,17 @@ export default async function PublicQuotePage({ params, searchParams }: { params
     .eq("approval_token", token)
     .maybeSingle();
 
+  // Document-level reference photos. RLS allows anon SELECT here when
+  // the estimate has an approval_token (see 20260606120000_public_estimate_photos).
+  const { data: docPhotos } = est
+    ? await supabase
+        .from("photo_attachments")
+        .select("url, caption, created_at")
+        .eq("estimate_id", (est as any).id)
+        .eq("kind", "reference")
+        .order("created_at", { ascending: true })
+    : { data: [] as { url: string; caption: string | null }[] };
+
   if (!est) {
     return (
       <main className="min-h-screen grid place-items-center p-6 bg-gray-50">
@@ -86,14 +97,42 @@ export default async function PublicQuotePage({ params, searchParams }: { params
               </tr>
             </thead>
             <tbody>
-              {items.map((li) => (
-                <tr key={li.id} className="border-b border-gray-100">
-                  <td className="py-2">{li.description}</td>
-                  <td className="py-2 text-right">{li.quantity}</td>
-                  <td className="py-2 text-right">{formatCurrency(Number(li.unit_price))}</td>
-                  <td className="py-2 text-right font-medium">{formatCurrency(Number(li.total))}</td>
-                </tr>
-              ))}
+              {items.map((li) => {
+                const photos = ((li.photo_urls as string[] | null) ?? []).filter(Boolean);
+                const kindBadge =
+                  li.kind === "labor" ? (
+                    <span className="inline-block text-[10px] font-semibold uppercase tracking-wider bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded mr-2">Labor</span>
+                  ) : li.kind === "material" ? (
+                    <span className="inline-block text-[10px] font-semibold uppercase tracking-wider bg-green-100 text-green-800 px-1.5 py-0.5 rounded mr-2">Material</span>
+                  ) : null;
+                return (
+                  <>
+                    <tr key={li.id} className="border-b border-gray-100">
+                      <td className="py-2">
+                        {kindBadge}{li.description}
+                        {li.taxable === false && Number(est.tax_rate) > 0 && (
+                          <span className="text-xs text-gray-500 ml-1.5">(non-taxable)</span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right">{li.quantity}</td>
+                      <td className="py-2 text-right">{formatCurrency(Number(li.unit_price))}</td>
+                      <td className="py-2 text-right font-medium">{formatCurrency(Number(li.total))}</td>
+                    </tr>
+                    {photos.length > 0 && (
+                      <tr key={`${li.id}-photos`}>
+                        <td colSpan={4} className="pb-3">
+                          <div className="flex flex-wrap gap-2">
+                            {photos.map((u: string) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={u} src={u} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
               <tr><td colSpan={3} className="py-1 text-right text-gray-500">Subtotal</td><td className="py-1 text-right">{formatCurrency(Number(est.subtotal))}</td></tr>
               {Number(est.discount_amount) > 0 && <tr><td colSpan={3} className="py-1 text-right text-gray-500">Discount</td><td className="py-1 text-right">− {formatCurrency(Number(est.discount_amount))}</td></tr>}
               <tr><td colSpan={3} className="py-1 text-right text-gray-500">Tax</td><td className="py-1 text-right">{formatCurrency(Number(est.tax_amount))}</td></tr>
@@ -101,6 +140,21 @@ export default async function PublicQuotePage({ params, searchParams }: { params
               {est.deposit_amount && <tr><td colSpan={3} className="py-1 text-right text-amber-700 text-sm">Required deposit on approval</td><td className="py-1 text-right text-amber-700">{formatCurrency(Number(est.deposit_amount))}</td></tr>}
             </tbody>
           </table>
+
+          {(docPhotos ?? []).length > 0 && (
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Pictures</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(docPhotos as { url: string; caption: string | null }[]).map((p) => (
+                  <div key={p.url} className="text-xs text-gray-600">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt="" className="w-full h-32 object-cover rounded border border-gray-200 mb-1" />
+                    {p.caption && <p className="leading-snug">{p.caption}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(est.notes || est.terms) && (
             <div className="mt-4 text-sm text-gray-600 space-y-2">

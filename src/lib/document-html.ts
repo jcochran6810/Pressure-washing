@@ -1,8 +1,32 @@
 import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 
-type Org = { name: string; email?: string | null; phone?: string | null; website?: string | null; address_line1?: string | null; city?: string | null; state?: string | null; postal_code?: string | null; logo_url?: string | null };
+type Org = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  address_line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  logo_url?: string | null;
+  // Surfaced on customer-facing docs for tax-exempt / B2B clarity.
+  legal_business_name?: string | null;
+  tax_id?: string | null;
+  tax_id_type?: string | null;
+};
 type Customer = { first_name?: string | null; last_name?: string | null; company_name?: string | null; email?: string | null; phone?: string | null };
-type LineItem = { description: string; quantity: number; unit_price: number; total: number; photo_urls?: string[] | null };
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  photo_urls?: string[] | null;
+  // Optional — when present, the line will show a "(non-taxable)" hint
+  // and 'Labor' / 'Material' badge next to the description.
+  kind?: "labor" | "material" | "service" | "other" | null;
+  taxable?: boolean | null;
+};
 
 function header(org: Org) {
   const logo = org.logo_url
@@ -37,7 +61,33 @@ function partiesAndMeta(opts: { docTitle: string; number: string; customer: Cust
     </div>`;
 }
 
-function lineTable(items: LineItem[], totals: { subtotal: number; discount?: number; taxRate?: number; tax?: number; total: number; paid?: number; balance?: number }, currency = "USD") {
+function kindBadge(kind?: LineItem["kind"]): string {
+  if (kind === "labor")
+    return `<span style="display:inline-block;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:4px;margin-right:6px;">Labor</span>`;
+  if (kind === "material")
+    return `<span style="display:inline-block;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:4px;margin-right:6px;">Material</span>`;
+  return "";
+}
+
+function lineTable(
+  items: LineItem[],
+  totals: {
+    subtotal: number;
+    discount?: number;
+    taxRate?: number;
+    tax?: number;
+    total: number;
+    paid?: number;
+    balance?: number;
+    laborSubtotal?: number;
+    materialsSubtotal?: number;
+    taxableSubtotal?: number;
+  },
+  currency = "USD",
+) {
+  const showSplit = (totals.laborSubtotal ?? 0) > 0 && (totals.materialsSubtotal ?? 0) > 0;
+  const showTaxableRow =
+    (totals.taxableSubtotal ?? 0) !== totals.subtotal && (totals.taxRate ?? 0) > 0;
   return `
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
@@ -58,16 +108,25 @@ function lineTable(items: LineItem[], totals: { subtotal: number; discount?: num
                 </div>
               </td></tr>`
             : "";
+          const badge = kindBadge(li.kind);
+          const nontaxableHint =
+            li.taxable === false && (totals.taxRate ?? 0) > 0
+              ? `<span style="color:#64748b;font-size:11px;margin-left:6px;">(non-taxable)</span>`
+              : "";
           return `
           <tr>
-            <td style="padding:8px;border-bottom:1px solid #f1f5f9;">${escapeHtml(li.description)}</td>
+            <td style="padding:8px;border-bottom:1px solid #f1f5f9;">${badge}${escapeHtml(li.description)}${nontaxableHint}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${li.quantity}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${formatCurrency(li.unit_price, currency)}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:600;">${formatCurrency(li.total, currency)}</td>
           </tr>${photoRow}`;
         }).join("")}
         <tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Subtotal</td><td style="text-align:right;padding:6px 8px;">${formatCurrency(totals.subtotal, currency)}</td></tr>
+        ${showSplit ? `
+        <tr><td colspan="3" style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">&nbsp;&nbsp;Labor</td><td style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">${formatCurrency(totals.laborSubtotal ?? 0, currency)}</td></tr>
+        <tr><td colspan="3" style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">&nbsp;&nbsp;Materials</td><td style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">${formatCurrency(totals.materialsSubtotal ?? 0, currency)}</td></tr>` : ""}
         ${totals.discount && totals.discount > 0 ? `<tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Discount</td><td style="text-align:right;padding:6px 8px;">− ${formatCurrency(totals.discount, currency)}</td></tr>` : ""}
+        ${showTaxableRow ? `<tr><td colspan="3" style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">Taxable amount</td><td style="text-align:right;padding:2px 8px;color:#94a3b8;font-size:11px;">${formatCurrency(totals.taxableSubtotal ?? 0, currency)}</td></tr>` : ""}
         <tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Tax (${((totals.taxRate ?? 0) * 100).toFixed(2)}%)</td><td style="text-align:right;padding:6px 8px;">${formatCurrency(totals.tax ?? 0, currency)}</td></tr>
         <tr><td colspan="3" style="text-align:right;padding:8px;border-top:2px solid #e2e8f0;font-weight:700;font-size:14px;">Total</td><td style="text-align:right;padding:8px;border-top:2px solid #e2e8f0;font-weight:700;font-size:14px;">${formatCurrency(totals.total, currency)}</td></tr>
         ${typeof totals.paid === "number" ? `<tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Paid</td><td style="text-align:right;padding:6px 8px;">− ${formatCurrency(totals.paid, currency)}</td></tr>` : ""}
@@ -76,13 +135,48 @@ function lineTable(items: LineItem[], totals: { subtotal: number; discount?: num
     </table>`;
 }
 
-function footer(notes?: string | null, terms?: string | null) {
-  if (!notes && !terms) return "";
+function docPhotoBlock(photos?: { url: string; note: string | null }[]) {
+  if (!photos?.length) return "";
   return `
-    <div style="margin-top:24px;display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:#475569;">
+    <div style="margin-top:24px;">
+      <h3 style="font-size:14px;margin:0 0 8px;color:#334155;">Pictures</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;">
+        ${photos.map((p) => `
+          <div style="width:240px;border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fff;">
+            <img src="${escapeHtml(p.url)}" alt="" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:4px;" />
+            ${p.note ? `<p style="margin:6px 2px 2px;font-size:11px;color:#475569;line-height:1.4;">${escapeHtml(p.note).replace(/\n/g, "<br/>")}</p>` : ""}
+          </div>`).join("")}
+      </div>
+    </div>`;
+}
+
+function footer(notes?: string | null, terms?: string | null, org?: Org) {
+  // Surface tax id on customer-facing docs when present — required by some
+  // B2B clients for their own bookkeeping. Format EIN as XX-XXXXXXX.
+  const taxLine = (() => {
+    if (!org?.tax_id) return "";
+    const digits = org.tax_id.replace(/[^0-9]/g, "");
+    const formatted =
+      org.tax_id_type === "EIN" && digits.length === 9
+        ? `${digits.slice(0, 2)}-${digits.slice(2)}`
+        : digits;
+    const label = org.tax_id_type && org.tax_id_type !== "none" ? org.tax_id_type : "Tax ID";
+    return `${label}: ${escapeHtml(formatted)}`;
+  })();
+  const legalName =
+    org?.legal_business_name && org.legal_business_name !== org.name
+      ? escapeHtml(org.legal_business_name)
+      : "";
+  const taxBlock = taxLine || legalName
+    ? `<div style="margin-top:20px;font-size:11px;color:#94a3b8;text-align:right;">${[legalName, taxLine].filter(Boolean).join(" • ")}</div>`
+    : "";
+  if (!notes && !terms && !taxBlock) return "";
+  return `
+    ${notes || terms ? `<div style="margin-top:24px;display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:#475569;">
       ${notes ? `<div><div style="font-weight:600;margin-bottom:4px;">Notes</div>${escapeHtml(notes).replace(/\n/g, "<br/>")}</div>` : ""}
       ${terms ? `<div><div style="font-weight:600;margin-bottom:4px;">Terms</div>${escapeHtml(terms).replace(/\n/g, "<br/>")}</div>` : ""}
-    </div>`;
+    </div>` : ""}
+    ${taxBlock}`;
 }
 
 function shell(body: string) {
@@ -100,6 +194,9 @@ export function invoiceHtml(opts: {
   issueDate: string;
   dueDate: string;
   items: LineItem[];
+  // Document-level reference photos with optional per-photo notes. Renders
+  // as a gallery section between the line table and the footer.
+  docPhotos?: { url: string; note: string | null }[];
   subtotal: number;
   discount: number;
   taxRate: number;
@@ -107,6 +204,9 @@ export function invoiceHtml(opts: {
   total: number;
   amountPaid: number;
   balanceDue: number;
+  laborSubtotal?: number;
+  materialsSubtotal?: number;
+  taxableSubtotal?: number;
   notes?: string | null;
   terms?: string | null;
   paid?: boolean;
@@ -125,8 +225,20 @@ export function invoiceHtml(opts: {
         customer: opts.customer,
         meta: [["Issue date", formatDate(opts.issueDate)], ["Due date", formatDate(opts.dueDate)]],
       })}
-      ${lineTable(opts.items, { subtotal: opts.subtotal, discount: opts.discount, taxRate: opts.taxRate, tax: opts.tax, total: opts.total, paid: opts.amountPaid, balance: opts.balanceDue }, opts.currency)}
-      ${footer(opts.notes, opts.terms)}
+      ${lineTable(opts.items, {
+        subtotal: opts.subtotal,
+        discount: opts.discount,
+        taxRate: opts.taxRate,
+        tax: opts.tax,
+        total: opts.total,
+        paid: opts.amountPaid,
+        balance: opts.balanceDue,
+        laborSubtotal: opts.laborSubtotal,
+        materialsSubtotal: opts.materialsSubtotal,
+        taxableSubtotal: opts.taxableSubtotal,
+      }, opts.currency)}
+      ${docPhotoBlock(opts.docPhotos)}
+      ${footer(opts.notes, opts.terms, opts.org)}
     </div>`);
 }
 
@@ -137,11 +249,15 @@ export function estimateHtml(opts: {
   issueDate: string;
   expiresAt: string | null;
   items: LineItem[];
+  docPhotos?: { url: string; note: string | null }[];
   subtotal: number;
   discount: number;
   taxRate: number;
   tax: number;
   total: number;
+  laborSubtotal?: number;
+  materialsSubtotal?: number;
+  taxableSubtotal?: number;
   notes?: string | null;
   terms?: string | null;
   currency?: string;
@@ -154,6 +270,16 @@ export function estimateHtml(opts: {
       customer: opts.customer,
       meta: [["Issue date", formatDate(opts.issueDate)], ["Expires", formatDate(opts.expiresAt)]],
     })}
-    ${lineTable(opts.items, { subtotal: opts.subtotal, discount: opts.discount, taxRate: opts.taxRate, tax: opts.tax, total: opts.total }, opts.currency)}
-    ${footer(opts.notes, opts.terms)}`);
+    ${lineTable(opts.items, {
+      subtotal: opts.subtotal,
+      discount: opts.discount,
+      taxRate: opts.taxRate,
+      tax: opts.tax,
+      total: opts.total,
+      laborSubtotal: opts.laborSubtotal,
+      materialsSubtotal: opts.materialsSubtotal,
+      taxableSubtotal: opts.taxableSubtotal,
+    }, opts.currency)}
+    ${docPhotoBlock(opts.docPhotos)}
+    ${footer(opts.notes, opts.terms, opts.org)}`);
 }

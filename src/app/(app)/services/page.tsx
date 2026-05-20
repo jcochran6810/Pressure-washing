@@ -43,6 +43,15 @@ export default async function ServicesPage({
     <div>
       <PageHeader title="Services & Pricing" description="Configure your service catalog, pricing, duration, and minimum job rules. Fields shown adapt to your trade." />
 
+      {/* Onboarding-context callout — every name and price on this page
+          drives the catalog dropdown on new estimates and invoices, so
+          owners need to know this is the canonical place to edit them. */}
+      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 mb-4">
+        Anything here pre-fills the &ldquo;Add from catalog&rdquo; dropdown when you
+        create an estimate or invoice. Edit a name or price, change the billing unit,
+        or deactivate the ones you don&rsquo;t use — your defaults update everywhere.
+      </div>
+
       {saved === "trade_defaults" && (
         <div className="border rounded-md p-3 text-sm mb-4 bg-green-50 text-green-800 border-green-200">
           Loaded {savedSvcCount} service{savedSvcCount === 1 ? "" : "s"}

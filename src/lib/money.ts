@@ -39,21 +39,65 @@ export function applyPayment(opts: {
   return { new_amount_paid, new_balance_due, new_status };
 }
 
-export type LineItem = { quantity: number; unit_price: number };
+export type LineItem = {
+  quantity: number;
+  unit_price: number;
+  // Per-line tax toggle. When undefined we treat it as true so existing
+  // callers that don't set this still get the same totals as before.
+  taxable?: boolean;
+  // 'labor' | 'material' | 'service' | 'other' — drives labor_subtotal +
+  // materials_subtotal rollups. Omitting it lumps the line under 'service'
+  // and excludes it from both rollups.
+  kind?: "labor" | "material" | "service" | "other";
+};
 
 // Compute subtotal/tax/total from line items, with discount and tax rate.
 // All amounts rounded to 2 decimal places to avoid float drift.
+//
+// Tax model: each line carries its own `taxable` flag. The discount is
+// applied proportionally to the taxable subtotal so that a $50 discount
+// on a $100/$100 (taxable / non-taxable) split removes $25 from the
+// taxable base — not the whole $50. This matches how most jurisdictions
+// expect mixed-tax invoices to compute.
 export function computeDocumentTotals(items: LineItem[], opts: {
   discount?: number;
   tax_rate?: number;
 }) {
-  const subtotal = round2(items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0));
+  const lineTotals = items.map((i) => ({
+    line: round2(Number(i.quantity || 0) * Number(i.unit_price || 0)),
+    taxable: i.taxable !== false,
+    kind: i.kind ?? "service",
+  }));
+  const subtotal = round2(lineTotals.reduce((s, l) => s + l.line, 0));
   const discount = round2(Math.max(0, Number(opts.discount ?? 0)));
-  const taxable = Math.max(0, subtotal - discount);
   const tax_rate = Number(opts.tax_rate ?? 0);
-  const tax_amount = round2(taxable * tax_rate);
-  const total = round2(taxable + tax_amount);
-  return { subtotal, discount, tax_amount, total };
+
+  const taxableSubtotalRaw = lineTotals.reduce((s, l) => s + (l.taxable ? l.line : 0), 0);
+  // Pro-rate the discount across taxable vs. non-taxable. If the doc has
+  // no taxable lines we still want the discount to apply (it just won't
+  // affect tax).
+  const taxablePortion =
+    subtotal > 0 ? round2((taxableSubtotalRaw / subtotal) * discount) : 0;
+  const taxable_subtotal = round2(Math.max(0, taxableSubtotalRaw - taxablePortion));
+  const tax_amount = round2(taxable_subtotal * tax_rate);
+  const total = round2(Math.max(0, subtotal - discount) + tax_amount);
+
+  const labor_subtotal = round2(
+    lineTotals.reduce((s, l) => s + (l.kind === "labor" ? l.line : 0), 0),
+  );
+  const materials_subtotal = round2(
+    lineTotals.reduce((s, l) => s + (l.kind === "material" ? l.line : 0), 0),
+  );
+
+  return {
+    subtotal,
+    discount,
+    tax_amount,
+    total,
+    taxable_subtotal,
+    labor_subtotal,
+    materials_subtotal,
+  };
 }
 
 // Compute the auto-deposit amount based on org settings.

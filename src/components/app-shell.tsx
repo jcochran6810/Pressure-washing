@@ -2,30 +2,38 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { NotificationsBell, type Notification } from "@/components/notifications";
+import type { TradeFeature } from "@/lib/trade-features";
 
-type NavItem = { href: string; label: string; icon: string };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  // If set, the link only renders when the org has this trade feature
+  // enabled. Omit for universal links (Dashboard, Customers, etc).
+  feature?: TradeFeature;
+};
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "▦" },
   { href: "/customers", label: "Customers", icon: "♟" },
   { href: "/properties", label: "Properties", icon: "⌂" },
   { href: "/contracts", label: "Contracts", icon: "↻" },
-  { href: "/measure", label: "Measure", icon: "▭" },
+  { href: "/measure", label: "Measure", icon: "▭", feature: "measure" },
   { href: "/estimates", label: "Estimates", icon: "✎" },
   { href: "/jobs", label: "Jobs", icon: "⚒" },
-  { href: "/recurring", label: "Recurring jobs", icon: "↻" },
+  { href: "/recurring", label: "Recurring jobs", icon: "↻", feature: "recurring" },
   { href: "/follow-ups", label: "Follow-ups", icon: "✓" },
   { href: "/calendar", label: "Calendar", icon: "▤" },
   { href: "/invoices", label: "Invoices", icon: "$" },
   { href: "/payments", label: "Receipts", icon: "✓" },
   { href: "/services", label: "Services", icon: "⚐" },
   { href: "/custom-fields", label: "Custom fields", icon: "▤" },
-  { href: "/chemicals", label: "Chemicals", icon: "⚗" },
-  { href: "/mix", label: "Mix calculator", icon: "≋" },
-  { href: "/equipment", label: "Equipment", icon: "⚙" },
+  { href: "/chemicals", label: "Chemicals", icon: "⚗", feature: "chemicals" },
+  { href: "/mix", label: "Mix calculator", icon: "≋", feature: "mix_calc" },
+  { href: "/equipment", label: "Equipment", icon: "⚙", feature: "equipment" },
   { href: "/expenses", label: "Expenses", icon: "−" },
   { href: "/leads", label: "Leads", icon: "★" },
   { href: "/campaigns", label: "Marketing", icon: "📣" },
@@ -53,6 +61,7 @@ export function AppShell({
   notifications = [],
   isPlatformAdmin: isAdmin = false,
   impersonatingOrgId = null,
+  tradeFeatures = [],
 }: {
   children: React.ReactNode;
   orgName: string;
@@ -62,6 +71,9 @@ export function AppShell({
   notifications?: Notification[];
   isPlatformAdmin?: boolean;
   impersonatingOrgId?: string | null;
+  // Set of TradeFeature ids enabled for the org. Nav items keyed to a
+  // feature only render when that feature is present.
+  tradeFeatures?: string[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -73,10 +85,16 @@ export function AppShell({
 
   const badgeFor = (href: string) => badges?.[href] ?? 0;
 
+  const featureSet = useMemo(() => new Set(tradeFeatures), [tradeFeatures]);
+  const visibleNav = useMemo(
+    () => NAV.filter((item) => !item.feature || featureSet.has(item.feature)),
+    [featureSet],
+  );
+
   function renderNav(onLeafClick?: () => void) {
     return (
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {NAV.map((item) => {
+        {visibleNav.map((item) => {
           const count = badgeFor(item.href);
           return (
             <Link
