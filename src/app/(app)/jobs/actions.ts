@@ -114,6 +114,8 @@ export async function setJobStatus(id: string, status: string) {
                   total: li.total,
                   sort_order: li.sort_order,
                   photo_urls: li.photo_urls ?? [],
+                  materials_description: li.materials_description ?? null,
+                  materials_cost: li.materials_cost ?? 0,
                 })),
               );
             }
@@ -217,6 +219,13 @@ export async function scheduleJob(id: string, formData: FormData) {
   const start = String(formData.get("scheduled_start") || "");
   const end = String(formData.get("scheduled_end") || "") || null;
   if (!start) throw new Error("Start time required");
+  // datetime-local strings carry no timezone — interpret them in the user's
+  // local clock, then reject anything before "now" so a typo can't book a
+  // job in the past. (The client-side check is a hint; this is the real gate.)
+  const startMs = new Date(start).getTime();
+  if (Number.isFinite(startMs) && startMs < Date.now() - 60_000) {
+    throw new Error("That start time has already passed.");
+  }
   await supabase
     .from("jobs")
     .update({ scheduled_start: start, scheduled_end: end })
@@ -253,6 +262,36 @@ export async function scheduleJob(id: string, formData: FormData) {
       });
     }
   }
+
+  revalidatePath(`/jobs/${id}`);
+  revalidatePath("/jobs");
+  revalidatePath("/calendar");
+}
+
+// One-click "start the job right now" path: used by the workflow banner on
+// estimates that were accepted and the crew started immediately. Sets
+// scheduled_start = now, marks the job in_progress, and skips reminders
+// (there's no future event to remind about).
+export async function scheduleJobImmediately(id: string) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const now = new Date();
+  await supabase
+    .from("jobs")
+    .update({
+      scheduled_start: now.toISOString(),
+      status: "in_progress",
+      actual_start: now.toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  // Wipe any reminder that was queued before "immediate" was chosen.
+  await (supabase as any)
+    .from("customer_reminders")
+    .delete()
+    .eq("job_id", id)
+    .eq("kind", "appointment")
+    .eq("status", "scheduled");
 
   revalidatePath(`/jobs/${id}`);
   revalidatePath("/jobs");

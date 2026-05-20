@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
-import { listGoogleEventsForDay, scheduleJob, type DaySchedule } from "@/app/(app)/jobs/actions";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { listGoogleEventsForDay, scheduleJob, scheduleJobImmediately, type DaySchedule } from "@/app/(app)/jobs/actions";
 
 const DEFAULT_DURATION_MIN = 60;
 
@@ -12,6 +12,13 @@ function todayDateIso() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
+}
+
+function nowTimeHHMM() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function combineDateTime(dateIso: string, timeHHMM: string) {
@@ -40,7 +47,8 @@ function fmtTime(iso: string) {
 }
 
 export function ScheduleJobForm({ jobId }: { jobId: string }) {
-  const [date, setDate] = useState<string>(todayDateIso());
+  const today = todayDateIso();
+  const [date, setDate] = useState<string>(today);
   const [startTime, setStartTime] = useState<string>("09:00");
   const [endTime, setEndTime] = useState<string>("");
   const [day, setDay] = useState<DaySchedule | null>(null);
@@ -67,10 +75,24 @@ export function ScheduleJobForm({ jobId }: { jobId: string }) {
     };
   }, [date]);
 
+  // Validation: can't schedule in the past relative to the user's local clock.
+  const isPast = useMemo(() => {
+    if (!date || !startTime) return false;
+    const local = new Date(`${date}T${startTime}`);
+    return Number.isFinite(local.getTime()) && local.getTime() < Date.now();
+  }, [date, startTime]);
+
+  // For a "today" date, the time picker should not allow times earlier than now.
+  const startTimeMin = date === today ? nowTimeHHMM() : undefined;
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!date || !startTime) {
       setError("Pick a date and start time.");
+      return;
+    }
+    if (isPast) {
+      setError("That time has already passed — pick a future time.");
       return;
     }
     const start = combineDateTime(date, startTime);
@@ -82,6 +104,17 @@ export function ScheduleJobForm({ jobId }: { jobId: string }) {
     startTransition(async () => {
       try {
         await scheduleJob(jobId, fd);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  }
+
+  function onStartNow() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await scheduleJobImmediately(jobId);
       } catch (err) {
         setError((err as Error).message);
       }
@@ -115,6 +148,7 @@ export function ScheduleJobForm({ jobId }: { jobId: string }) {
           <input
             type="date"
             value={date}
+            min={today}
             onChange={(e) => setDate(e.target.value)}
             required
             className="w-full mt-0.5"
@@ -125,6 +159,7 @@ export function ScheduleJobForm({ jobId }: { jobId: string }) {
           <input
             type="time"
             value={startTime}
+            min={startTimeMin}
             onChange={(e) => setStartTime(e.target.value)}
             required
             className="w-full mt-0.5"
@@ -150,9 +185,21 @@ export function ScheduleJobForm({ jobId }: { jobId: string }) {
       />
 
       <div className="flex flex-wrap gap-2 items-center">
-        <button type="submit" disabled={pending} className="btn-primary text-base px-5 py-3 disabled:opacity-60">
+        <button type="submit" disabled={pending || isPast} className="btn-primary text-base px-5 py-3 disabled:opacity-60">
           {pending ? "Scheduling…" : "📅 Schedule job"}
         </button>
+        <button
+          type="button"
+          onClick={onStartNow}
+          disabled={pending}
+          className="btn-secondary text-base px-5 py-3 disabled:opacity-60"
+          title="Schedule for right now and mark the job in-progress"
+        >
+          ▶ Schedule for immediately
+        </button>
+        {isPast && !error && (
+          <span className="text-xs text-red-600">That start time has already passed.</span>
+        )}
         {error && <span className="text-sm text-red-600">{error}</span>}
       </div>
     </form>

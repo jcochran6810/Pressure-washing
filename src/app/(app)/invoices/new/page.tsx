@@ -3,6 +3,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { createInvoice } from "../actions";
 import { LineItemEditor } from "@/components/line-item-editor";
 import { CustomerPicker } from "@/components/customer-picker";
+import { LocalDateInput } from "@/components/local-date-input";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,6 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
     supabase.from("customers").select("id, first_name, last_name, company_name").eq("organization_id", organizationId),
     supabase.from("services").select("id, name, default_price").eq("organization_id", organizationId).eq("active", true).order("name"),
   ]);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const due = new Date();
-  due.setDate(due.getDate() + 14);
 
   return (
     <div className="max-w-3xl">
@@ -29,11 +26,11 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
           </div>
           <div>
             <label>Issue date</label>
-            <input name="issue_date" type="date" defaultValue={today} className="w-full" />
+            <LocalDateInput name="issue_date" className="w-full" />
           </div>
           <div>
             <label>Due date</label>
-            <input name="due_date" type="date" defaultValue={due.toISOString().slice(0, 10)} className="w-full" />
+            <LocalDateInput name="due_date" offsetDays={14} className="w-full" />
           </div>
         </div>
 

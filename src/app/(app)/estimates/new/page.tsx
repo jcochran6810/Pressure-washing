@@ -3,6 +3,7 @@ import { getSessionAndOrg } from "@/lib/org";
 import { createEstimate } from "../actions";
 import { LineItemEditor } from "@/components/line-item-editor";
 import { CustomerPicker } from "@/components/customer-picker";
+import { LocalDateInput } from "@/components/local-date-input";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,6 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
     supabase.from("customers").select("id, first_name, last_name, company_name").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("services").select("id, name, default_price").eq("organization_id", organizationId).eq("active", true).order("name"),
   ]);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const expiry = new Date();
-  expiry.setDate(expiry.getDate() + 30);
 
   return (
     <div className="max-w-3xl">
@@ -31,11 +28,11 @@ export default async function NewEstimatePage({ searchParams }: { searchParams: 
           </div>
           <div>
             <label>Issue date</label>
-            <input name="issue_date" type="date" defaultValue={today} className="w-full" />
+            <LocalDateInput name="issue_date" className="w-full" />
           </div>
           <div>
             <label>Expires (30 days default)</label>
-            <input name="expires_at" type="date" defaultValue={expiry.toISOString().slice(0, 10)} className="w-full" />
+            <LocalDateInput name="expires_at" offsetDays={30} className="w-full" />
           </div>
           <div>
             <label>Estimated duration (min) — internal</label>

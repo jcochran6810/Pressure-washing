@@ -9,6 +9,7 @@ import { loadWorkflow } from "@/lib/workflow";
 import { workflowLabel } from "@/lib/numbering";
 import { customerDisplayName, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { ScrollToTop } from "@/components/scroll-to-top";
+import { LocalDateInput } from "@/components/local-date-input";
 
 export const dynamic = "force-dynamic";
 
@@ -28,22 +29,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const workflow = await loadWorkflow({ invoiceId: id });
 
   const sortedItems = ((inv.invoice_line_items as any[]) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const markSent = setInvoiceStatus.bind(null, inv.id, "sent");
-  const markVoid = setInvoiceStatus.bind(null, inv.id, "void");
   const recordPay = recordPayment.bind(null, inv.id);
-  const createLink = createStripePaymentLink.bind(null, inv.id);
   const saveDrive = saveInvoiceToDrive.bind(null, inv.id);
-  const emailInv = emailInvoiceToCustomer.bind(null, inv.id);
-  const sendEmailTpl = sendInvoiceViaTemplate.bind(null, inv.id, "email", "invoice_send");
-  const sendSmsTpl = sendInvoiceViaTemplate.bind(null, inv.id, "sms", "invoice_send");
   const sendReminder = sendInvoiceViaTemplate.bind(null, inv.id, "email", "payment_reminder");
   const sendReminderSms = sendInvoiceViaTemplate.bind(null, inv.id, "sms", "payment_reminder");
   const pushQbo = pushInvoiceToQboAction.bind(null, inv.id);
+  const markVoid = setInvoiceStatus.bind(null, inv.id, "void");
+  const createLink = createStripePaymentLink.bind(null, inv.id);
   const del = deleteInvoice.bind(null, inv.id);
   const cust: any = inv.customers;
   const hasEmail = !!cust?.email;
   const hasPhone = !!(cust?.phone || cust?.mobile_phone);
   const isUnpaid = inv.status !== "paid" && inv.status !== "void";
+  const isLocked = inv.status === "paid" || inv.status === "void";
 
   return (
     <div>
@@ -60,34 +58,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <span className={`badge mt-1 ${statusColor(inv.status)}`}>{inv.status}</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!isLocked && <Link href={`/invoices/${inv.id}/edit`} className="btn-secondary">Edit</Link>}
           <a href={`/api/documents/invoices/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">View / Print</a>
-          <form action={emailInv}><button className="btn-secondary" disabled={!hasEmail}>Email PDF</button></form>
-          <form action={sendEmailTpl}><button className="btn-secondary" disabled={!hasEmail}>Send email template</button></form>
-          <form action={sendSmsTpl}><button className="btn-secondary" disabled={!hasPhone}>Send SMS</button></form>
-          {isUnpaid && (
-            <>
-              <form action={sendReminder}><button className="btn-secondary" disabled={!hasEmail}>Email reminder</button></form>
-              <form action={sendReminderSms}><button className="btn-secondary" disabled={!hasPhone}>SMS reminder</button></form>
-            </>
-          )}
           <form action={saveDrive}><button className="btn-secondary">Save to Drive</button></form>
-          <form action={pushQbo}><button className="btn-secondary" disabled={!!(inv as any).qbo_id}>{(inv as any).qbo_id ? "✓ Synced to QBO" : "Push to QBO"}</button></form>
-          {inv.status === "draft" && <form action={markSent}><button className="btn-secondary">Mark sent</button></form>}
-          {inv.stripe_payment_link ? (
-            <a href={inv.stripe_payment_link} target="_blank" rel="noopener" className="btn-secondary">Stripe link ↗</a>
-          ) : (
-            <form action={createLink}><button className="btn-secondary">Create Stripe link</button></form>
-          )}
-          {isUnpaid && (
-            <form action={markVoid}><button className="btn-ghost text-red-600">Void</button></form>
-          )}
         </div>
       </div>
 
       <WorkflowStepper workflow={workflow} />
       <NextStepBanner
         workflow={workflow}
-        customerHasEmail={!!(inv.customers as any)?.email}
+        customerHasEmail={hasEmail}
+        customerHasPhone={hasPhone}
       />
 
       <div className="card-padded mb-4">
@@ -107,6 +88,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <tr key={li.id}>
                 <td>
                   <div>{li.description}</div>
+                  {Number(li.materials_cost) > 0 && (
+                    <div className="text-xs text-amber-700 mt-0.5">
+                      + Materials{li.materials_description ? `: ${li.materials_description}` : ""} ({formatCurrency(Number(li.materials_cost))})
+                    </div>
+                  )}
                   {!!li.photo_urls?.length && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {li.photo_urls.map((u: string) => (
@@ -142,7 +128,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </div>
               <div>
                 <label>Date</label>
-                <input name="payment_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full" />
+                <LocalDateInput name="payment_date" className="w-full" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -192,9 +178,30 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      <form action={del} className="mt-5">
-        <button className="btn-ghost text-red-600 hover:bg-red-50 text-xs">Delete invoice</button>
-      </form>
+      <div className="mt-5 flex flex-wrap gap-2 items-center">
+        {isUnpaid && (
+          <>
+            <form action={sendReminder}><button className="btn-ghost text-xs" disabled={!hasEmail}>Email payment reminder</button></form>
+            <form action={sendReminderSms}><button className="btn-ghost text-xs" disabled={!hasPhone}>SMS payment reminder</button></form>
+          </>
+        )}
+        <form action={pushQbo}>
+          <button className="btn-ghost text-xs" disabled={!!(inv as any).qbo_id}>
+            {(inv as any).qbo_id ? "✓ Synced to QBO" : "Push to QBO"}
+          </button>
+        </form>
+        {inv.stripe_payment_link ? (
+          <a href={inv.stripe_payment_link} target="_blank" rel="noopener" className="btn-ghost text-xs">Stripe link ↗</a>
+        ) : (
+          <form action={createLink}><button className="btn-ghost text-xs">Create Stripe link</button></form>
+        )}
+        {isUnpaid && (
+          <form action={markVoid}><button className="btn-ghost text-red-600 text-xs">Void</button></form>
+        )}
+        <form action={del}>
+          <button className="btn-ghost text-red-600 hover:bg-red-50 text-xs">Delete invoice</button>
+        </form>
+      </div>
     </div>
   );
 }

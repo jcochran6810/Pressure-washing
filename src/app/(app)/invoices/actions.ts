@@ -12,13 +12,26 @@ import { sendInvoiceReceiptEmail } from "@/lib/receipts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  photos: string[];
+  materials_description: string | null;
+  materials_cost: number;
+};
+
+function lineTotal(i: LineItem): number {
+  return i.quantity * i.unit_price + (i.materials_cost ?? 0);
+}
 
 function parseLineItems(formData: FormData): LineItem[] {
   const descs = formData.getAll("li_description") as string[];
   const qtys = formData.getAll("li_quantity") as string[];
   const prices = formData.getAll("li_unit_price") as string[];
   const photoStrs = formData.getAll("li_photos") as string[];
+  const matDescs = formData.getAll("li_materials_description") as string[];
+  const matCosts = formData.getAll("li_materials_cost") as string[];
   const out: LineItem[] = [];
   for (let i = 0; i < descs.length; i++) {
     const d = (descs[i] || "").trim();
@@ -28,7 +41,14 @@ function parseLineItems(formData: FormData): LineItem[] {
       const parsed = JSON.parse(photoStrs[i] || "[]");
       if (Array.isArray(parsed)) urls = parsed.filter((u) => typeof u === "string");
     } catch {}
-    out.push({ description: d, quantity: Number(qtys[i] || 1), unit_price: Number(prices[i] || 0), photos: urls });
+    out.push({
+      description: d,
+      quantity: Number(qtys[i] || 1),
+      unit_price: Number(prices[i] || 0),
+      photos: urls,
+      materials_description: (matDescs[i] || "").trim() || null,
+      materials_cost: Number(matCosts[i] || 0) || 0,
+    });
   }
   return out;
 }
@@ -47,7 +67,7 @@ export async function createInvoice(formData: FormData) {
   const tax_rate = validated.tax_rate ?? 0;
   const discount_amount = validated.discount_amount ?? 0;
   const items = parseLineItems(formData);
-  const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
   const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
   const total = Math.max(0, subtotal - discount_amount) + tax_amount;
   const notes = validated.notes ?? null;
@@ -69,15 +89,83 @@ export async function createInvoice(formData: FormData) {
         description: i.description,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        total: i.quantity * i.unit_price,
+        total: lineTotal(i),
         sort_order: idx,
         photo_urls: i.photos,
-      })),
+        materials_description: i.materials_description,
+        materials_cost: i.materials_cost ?? 0,
+      } as any)),
     );
   }
 
   revalidatePath("/invoices");
   redirect(`/invoices/${inv.id}`);
+}
+
+export async function updateInvoice(id: string, formData: FormData) {
+  const { supabase, organizationId } = await getSessionAndOrg();
+  const validated = parseForm(invoiceSchema, formData);
+
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("status, amount_paid")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .single();
+  if (!existing) throw new Error("Invoice not found");
+  if (existing.status === "paid" || existing.status === "void") {
+    throw new Error("This invoice is locked because it has been paid or voided.");
+  }
+
+  const due_date = validated.due_date || null;
+  const issue_date = validated.issue_date || new Date().toISOString().slice(0, 10);
+  const tax_rate = validated.tax_rate ?? 0;
+  const discount_amount = validated.discount_amount ?? 0;
+  const items = parseLineItems(formData);
+  const subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
+  const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
+  const total = Math.max(0, subtotal - discount_amount) + tax_amount;
+  const amount_paid = Number(existing.amount_paid ?? 0);
+  const balance_due = Math.max(0, total - amount_paid);
+
+  await supabase
+    .from("invoices")
+    .update({
+      customer_id: validated.customer_id,
+      issue_date,
+      due_date,
+      tax_rate,
+      discount_amount,
+      tax_amount,
+      subtotal,
+      total,
+      balance_due,
+      notes: validated.notes ?? null,
+      terms: validated.terms ?? null,
+    })
+    .eq("id", id)
+    .eq("organization_id", organizationId);
+
+  await supabase.from("invoice_line_items").delete().eq("invoice_id", id);
+  if (items.length) {
+    await supabase.from("invoice_line_items").insert(
+      items.map((i, idx) => ({
+        invoice_id: id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: lineTotal(i),
+        sort_order: idx,
+        photo_urls: i.photos,
+        materials_description: i.materials_description,
+        materials_cost: i.materials_cost ?? 0,
+      } as any)),
+    );
+  }
+
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${id}`);
 }
 
 export async function setInvoiceStatus(id: string, status: string) {
@@ -268,7 +356,15 @@ export async function saveInvoiceToDrive(id: string) {
     invoiceNumber: inv.invoice_number,
     issueDate: inv.issue_date,
     dueDate: inv.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
+    })),
     subtotal: Number(inv.subtotal), discount: Number(inv.discount_amount), taxRate: Number(inv.tax_rate),
     tax: Number(inv.tax_amount), total: Number(inv.total),
     amountPaid: Number(inv.amount_paid), balanceDue: Number(inv.balance_due),
@@ -315,7 +411,15 @@ export async function emailInvoiceToCustomer(id: string) {
     invoiceNumber: fresh.invoice_number,
     issueDate: fresh.issue_date,
     dueDate: fresh.due_date,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
+    })),
     subtotal: Number(fresh.subtotal), discount: Number(fresh.discount_amount), taxRate: Number(fresh.tax_rate),
     tax: Number(fresh.tax_amount), total: Number(fresh.total),
     amountPaid: Number(fresh.amount_paid), balanceDue: Number(fresh.balance_due),
@@ -346,6 +450,8 @@ export async function emailInvoiceToCustomer(id: string) {
       quantity: Number(li.quantity),
       unit_price: Number(li.unit_price),
       total: Number(li.total),
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
     })),
     subtotal: Number(fresh.subtotal),
     discount: Number(fresh.discount_amount ?? 0),

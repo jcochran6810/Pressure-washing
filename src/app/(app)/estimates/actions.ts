@@ -9,7 +9,14 @@ import { estimateSchema, parseForm } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-type LineItem = { description: string; quantity: number; unit_price: number; photos: string[] };
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  photos: string[];
+  materials_description: string | null;
+  materials_cost: number;
+};
 
 async function nextNumber(prefix: string, orgId: string, supabase: any, field: "next_estimate_number" | "next_invoice_number") {
   // Both fields share the same counter going forward (see src/lib/numbering.ts).
@@ -23,6 +30,8 @@ function parseLineItems(formData: FormData): LineItem[] {
   const qtys = formData.getAll("li_quantity") as string[];
   const prices = formData.getAll("li_unit_price") as string[];
   const photoStrs = formData.getAll("li_photos") as string[];
+  const matDescs = formData.getAll("li_materials_description") as string[];
+  const matCosts = formData.getAll("li_materials_cost") as string[];
   const out: LineItem[] = [];
   for (let i = 0; i < descs.length; i++) {
     const d = (descs[i] || "").trim();
@@ -37,6 +46,8 @@ function parseLineItems(formData: FormData): LineItem[] {
       quantity: Number(qtys[i] || 1),
       unit_price: Number(prices[i] || 0),
       photos: urls,
+      materials_description: (matDescs[i] || "").trim() || null,
+      materials_cost: Number(matCosts[i] || 0) || 0,
     });
   }
   return out;
@@ -60,14 +71,15 @@ export async function createEstimate(formData: FormData) {
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
   const items = parseLineItems(formData);
 
-  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const lineTotal = (i: LineItem) => i.quantity * i.unit_price + (i.materials_cost ?? 0);
+  let subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
 
   // Apply global min job price
   const globalMin = Number(organization?.global_min_job_price ?? 0);
   if (globalMin > 0 && subtotal < globalMin) {
     subtotal = globalMin;
     if (items.length === 0) {
-      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [] });
+      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [], materials_description: null, materials_cost: 0 });
     }
   }
 
@@ -101,10 +113,12 @@ export async function createEstimate(formData: FormData) {
         description: i.description,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        total: i.quantity * i.unit_price,
+        total: lineTotal(i),
         sort_order: idx,
         photo_urls: i.photos,
-      })),
+        materials_description: i.materials_description,
+        materials_cost: i.materials_cost ?? 0,
+      } as any)),
     );
   }
 
@@ -216,6 +230,8 @@ export async function convertEstimateToInvoice(estimateId: string) {
         total: li.total,
         sort_order: li.sort_order,
         photo_urls: li.photo_urls ?? [],
+        materials_description: li.materials_description ?? null,
+        materials_cost: li.materials_cost ?? 0,
       })),
     );
   }
@@ -252,7 +268,15 @@ function estimateDocHtml(organization: any, est: any) {
     estimateNumber: est.estimate_number,
     issueDate: est.issue_date,
     expiresAt: est.expires_at,
-    items: items.map((li) => ({ description: li.description, quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total), photo_urls: li.photo_urls ?? [] })),
+    items: items.map((li) => ({
+      description: li.description,
+      quantity: Number(li.quantity),
+      unit_price: Number(li.unit_price),
+      total: Number(li.total),
+      photo_urls: li.photo_urls ?? [],
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
+    })),
     subtotal: Number(est.subtotal), discount: Number(est.discount_amount), taxRate: Number(est.tax_rate),
     tax: Number(est.tax_amount), total: Number(est.total),
     notes: est.notes, terms: est.terms,
@@ -273,6 +297,8 @@ async function estimateDocPdf(organization: any, est: any): Promise<Uint8Array> 
       quantity: Number(li.quantity),
       unit_price: Number(li.unit_price),
       total: Number(li.total),
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
     })),
     subtotal: Number(est.subtotal),
     discount: Number(est.discount_amount ?? 0),
@@ -406,12 +432,13 @@ export async function updateEstimate(id: string, formData: FormData) {
   const buffer_minutes = Number(formData.get("buffer_minutes") || 30);
   const items = parseLineItems(formData);
 
-  let subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const lineTotal = (i: LineItem) => i.quantity * i.unit_price + (i.materials_cost ?? 0);
+  let subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
   const globalMin = Number(organization?.global_min_job_price ?? 0);
   if (globalMin > 0 && subtotal < globalMin) {
     subtotal = globalMin;
     if (items.length === 0) {
-      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [] });
+      items.push({ description: "Minimum service charge", quantity: 1, unit_price: globalMin, photos: [], materials_description: null, materials_cost: 0 });
     }
   }
   const tax_amount = Math.max(0, subtotal - discount_amount) * tax_rate;
@@ -451,10 +478,12 @@ export async function updateEstimate(id: string, formData: FormData) {
         description: i.description,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        total: i.quantity * i.unit_price,
+        total: lineTotal(i),
         sort_order: idx,
         photo_urls: i.photos,
-      })),
+        materials_description: i.materials_description,
+        materials_cost: i.materials_cost ?? 0,
+      } as any)),
     );
   }
 

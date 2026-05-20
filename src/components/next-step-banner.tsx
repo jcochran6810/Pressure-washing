@@ -3,7 +3,7 @@ import type { WorkflowState } from "@/lib/workflow";
 import { CopyButton } from "./copy-button";
 import { setEstimateStatus, emailEstimateToCustomer, sendEstimateViaTemplate } from "@/app/(app)/estimates/actions";
 import { setJobStatus } from "@/app/(app)/jobs/actions";
-import { emailInvoiceToCustomer, recordPayment, sendInvoiceReceipt } from "@/app/(app)/invoices/actions";
+import { emailInvoiceToCustomer, recordPayment, sendInvoiceReceipt, sendInvoiceViaTemplate } from "@/app/(app)/invoices/actions";
 import { ScheduleJobForm } from "./schedule-job-form";
 
 export function NextStepBanner({
@@ -141,18 +141,27 @@ export function NextStepBanner({
   // Step 8: invoice draft not yet sent
   if (workflow.invoiceId && !workflow.invoiceSent && !workflow.invoicePaid) {
     const emailInv = emailInvoiceToCustomer.bind(null, workflow.invoiceId);
+    const smsInv = sendInvoiceViaTemplate.bind(null, workflow.invoiceId, "sms", "invoice_send");
     return (
       <Banner tone="primary" eyebrow="Next step" title="Send the invoice with payment link">
         <p className="text-sm text-gray-700 mb-3">
-          Creates the Stripe payment link if Stripe is connected, includes a "Pay online" button in the email,
-          and marks the invoice as sent.
+          Email attaches the PDF and a one-click "Pay online" Stripe link.
+          SMS sends a short link the customer can tap to pay.
         </p>
-        <form action={emailInv}>
-          <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
-            ✉ Send invoice to customer
-          </button>
-        </form>
-        {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable sending.</p>}
+        <div className="flex flex-wrap gap-2">
+          <form action={emailInv}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasEmail}>
+              ✉ Send as Email
+            </button>
+          </form>
+          <form action={smsInv}>
+            <button className="btn-primary text-base px-5 py-3" disabled={!customerHasPhone}>
+              💬 Send as SMS
+            </button>
+          </form>
+        </div>
+        {!customerHasEmail && <p className="text-xs text-amber-700 mt-2">Customer has no email — add one to enable email sending.</p>}
+        {!customerHasPhone && <p className="text-xs text-amber-700 mt-1">Customer has no phone — add one to enable SMS sending.</p>}
       </Banner>
     );
   }

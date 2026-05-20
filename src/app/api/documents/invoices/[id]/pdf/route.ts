@@ -26,6 +26,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       quantity: Number(li.quantity),
       unit_price: Number(li.unit_price),
       total: Number(li.total),
+      materials_description: li.materials_description ?? null,
+      materials_cost: Number(li.materials_cost ?? 0),
     })),
     subtotal: Number((inv as any).subtotal),
     discount: Number((inv as any).discount_amount ?? 0),

@@ -18,7 +18,14 @@ type Customer = {
   email?: string | null;
   phone?: string | null;
 };
-type LineItem = { description: string; quantity: number; unit_price: number; total: number };
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  materials_description?: string | null;
+  materials_cost?: number | null;
+};
 
 type DocInput = {
   org: Org;
@@ -244,12 +251,25 @@ export async function buildDocumentPdf(input: DocInput): Promise<Uint8Array> {
 
   for (const li of input.items) {
     const descLines = wrap(li.description || "", font, 10, colQtyX - colDescX - 10);
-    const rowHeight = Math.max(14, descLines.length * 12 + 4);
+    const matCost = Number(li.materials_cost ?? 0);
+    const matLines = matCost > 0
+      ? wrap(
+          `+ Materials${li.materials_description ? `: ${li.materials_description}` : ""} (${formatCurrency(matCost, currency)})`,
+          font,
+          9,
+          colQtyX - colDescX - 24,
+        )
+      : [];
+    const rowHeight = Math.max(14, descLines.length * 12 + matLines.length * 11 + 4);
     cursor = ensureSpace(pdf, cursor, rowHeight + 4);
     let y = cursor.y;
     for (let i = 0; i < descLines.length; i++) {
       cursor.page.drawText(descLines[i], { x: colDescX, y: y - 11, size: 10, font, color: toRgb(text) });
       y -= 12;
+    }
+    for (const ml of matLines) {
+      cursor.page.drawText(sanitize(ml), { x: colDescX + 12, y: y - 10, size: 9, font, color: toRgb("#a16207") });
+      y -= 11;
     }
     const qty = String(li.quantity);
     const price = formatCurrency(li.unit_price, currency);

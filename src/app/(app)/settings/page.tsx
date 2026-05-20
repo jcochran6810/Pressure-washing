@@ -45,9 +45,20 @@ export default async function SettingsPage({
     (supabase as any).from("qbo_connections").select("*").eq("organization_id", organizationId).maybeSingle(),
     supabase.from("org_messaging_credentials").select("*").eq("organization_id", organizationId).maybeSingle(),
     (supabase as any).from("business_types").select("*").eq("active", true).order("sort_order"),
-    (supabase as any).from("organization_business_types").select("business_type_id, is_primary").eq("organization_id", organizationId),
+    (supabase as any).from("organization_business_types").select("business_type_id, is_primary, cancel_at_period_end, drops_at").eq("organization_id", organizationId),
   ]);
-  const selectedTypeIds = new Set<string>((orgBusinessTypes ?? []).map((r: any) => r.business_type_id));
+  // Active means still selected from the picker's POV. Cancelled-but-not-yet-dropped
+  // trades stay in the dropdowns until billing_period_end but render unchecked
+  // here so the operator can re-enable them at no charge.
+  const selectedTypeIds = new Set<string>(
+    (orgBusinessTypes ?? [])
+      .filter((r: any) => !r.cancel_at_period_end)
+      .map((r: any) => r.business_type_id),
+  );
+  const pendingDrops: Record<string, string | null> = {};
+  for (const r of (orgBusinessTypes ?? []) as any[]) {
+    if (r.cancel_at_period_end) pendingDrops[r.business_type_id] = r.drops_at ?? null;
+  }
   const messagingMode: "platform" | "byoc" =
     (messagingCreds?.messaging_mode === "byoc" ? "byoc" : "platform");
   const subscriptionTier = (organization as any)?.subscription_tier ?? "basic";
@@ -136,6 +147,7 @@ export default async function SettingsPage({
             initialPrimary={
               (orgBusinessTypes ?? []).find((r: any) => r.is_primary)?.business_type_id ?? businessTypeId
             }
+            pendingDrops={pendingDrops}
           />
         </form>
       </section>

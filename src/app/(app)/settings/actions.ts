@@ -147,27 +147,97 @@ export async function disconnectStripeConnect() {
   savedRedirect("stripe_disconnected");
 }
 
-// Multi-trade setter. Accepts repeated business_type_id fields plus a
-// primary_business_type_id pointing at the row that should be flagged
-// primary. First INCLUDED_BUSINESS_TYPES are free; each additional one
-// implies the per-trade add-on (operator wires the Stripe price separately).
+// Multi-trade setter with monthly-billing lifecycle:
+//   * Selecting a trade adds it immediately — the dropdown for new
+//     estimates / invoices shows it on the next render.
+//   * Unselecting a trade does NOT remove the row mid-cycle. We mark it
+//     `cancel_at_period_end=true` so the org keeps access (services, custom
+//     fields, dropdown options) until billing_period_end, then a sweep
+//     cron / next-bill webhook removes it. Until then, re-checking the
+//     same trade un-cancels with no extra charge.
+//   * Newly added trades are billed on the next monthly invoice via the
+//     standard quantity update on the Stripe subscription. We surface the
+//     amount in the UI; actual proration is handled by Stripe.
 export async function setBusinessTypes(formData: FormData) {
   const { supabase, organizationId } = await getSessionAndOrg();
   const selected = formData.getAll("business_type_id").map((v) => String(v).trim()).filter(Boolean);
   if (selected.length === 0) return;
   const primary = String(formData.get("primary_business_type_id") || selected[0]).trim();
   const unique = Array.from(new Set(selected));
-  // Force the primary to be in the selected list.
   if (!unique.includes(primary)) unique.unshift(primary);
 
-  // Wipe + rewrite the join table (small enough to not bother with diffing).
-  await (supabase as any).from("organization_business_types").delete().eq("organization_id", organizationId);
-  const rows = unique.map((id) => ({
-    organization_id: organizationId,
-    business_type_id: id,
-    is_primary: id === primary,
-  }));
-  await (supabase as any).from("organization_business_types").insert(rows);
+  const { data: existing } = await (supabase as any)
+    .from("organization_business_types")
+    .select("business_type_id, cancel_at_period_end, drops_at")
+    .eq("organization_id", organizationId);
+  const existingIds = new Set<string>((existing ?? []).map((r: any) => r.business_type_id));
+  const existingActive = new Set<string>((existing ?? [])
+    .filter((r: any) => !r.cancel_at_period_end)
+    .map((r: any) => r.business_type_id));
+
+  // Compute billing_period_end (defaults to "first of next month" so the
+  // operator can still drop trades without a Stripe webhook wired up).
+  const { data: orgRow } = await supabase
+    .from("organizations")
+    .select("billing_period_end")
+    .eq("id", organizationId)
+    .single();
+  const periodEnd = (orgRow as any)?.billing_period_end
+    ? new Date((orgRow as any).billing_period_end)
+    : firstOfNextMonth();
+
+  // Drop the join rows we'd never insert/update; insert anything new,
+  // un-cancel anything that was scheduled to drop, mark removed ones as
+  // cancel_at_period_end.
+  const toInsert: any[] = [];
+  const toUncancel: string[] = [];
+  for (const id of unique) {
+    if (!existingIds.has(id)) {
+      toInsert.push({
+        organization_id: organizationId,
+        business_type_id: id,
+        is_primary: id === primary,
+        cancel_at_period_end: false,
+        added_at: new Date().toISOString(),
+        drops_at: null,
+      });
+    } else {
+      toUncancel.push(id);
+    }
+  }
+  const toCancel: string[] = [];
+  for (const id of existingActive) {
+    if (!unique.includes(id)) toCancel.push(id);
+  }
+
+  if (toInsert.length) {
+    await (supabase as any).from("organization_business_types").insert(toInsert);
+  }
+  if (toUncancel.length) {
+    await (supabase as any)
+      .from("organization_business_types")
+      .update({ cancel_at_period_end: false, drops_at: null })
+      .eq("organization_id", organizationId)
+      .in("business_type_id", toUncancel);
+  }
+  if (toCancel.length) {
+    await (supabase as any)
+      .from("organization_business_types")
+      .update({ cancel_at_period_end: true, drops_at: periodEnd.toISOString() })
+      .eq("organization_id", organizationId)
+      .in("business_type_id", toCancel);
+  }
+
+  // Re-flag the primary (this can flip even when membership doesn't).
+  await (supabase as any)
+    .from("organization_business_types")
+    .update({ is_primary: false })
+    .eq("organization_id", organizationId);
+  await (supabase as any)
+    .from("organization_business_types")
+    .update({ is_primary: true })
+    .eq("organization_id", organizationId)
+    .eq("business_type_id", primary);
 
   // Keep the singular primary column in sync so legacy reads still work.
   await supabase
@@ -177,7 +247,15 @@ export async function setBusinessTypes(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/services");
+  revalidatePath("/settings");
+  revalidatePath("/estimates/new");
+  revalidatePath("/invoices/new");
   savedRedirect("business_type");
+}
+
+function firstOfNextMonth(): Date {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0);
 }
 
 // Back-compat shim for any callers still pointing at the old single-type

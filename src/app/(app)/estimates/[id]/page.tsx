@@ -110,6 +110,11 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
               <tr key={li.id}>
                 <td>
                   <div>{li.description}</div>
+                  {Number(li.materials_cost) > 0 && (
+                    <div className="text-xs text-amber-700 mt-0.5">
+                      + Materials{li.materials_description ? `: ${li.materials_description}` : ""} ({formatCurrency(Number(li.materials_cost))})
+                    </div>
+                  )}
                   {!!li.photo_urls?.length && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {li.photo_urls.map((u: string) => (

@@ -2,7 +2,15 @@ import { formatCurrency, formatDate, customerDisplayName } from "@/lib/utils";
 
 type Org = { name: string; email?: string | null; phone?: string | null; website?: string | null; address_line1?: string | null; city?: string | null; state?: string | null; postal_code?: string | null; logo_url?: string | null };
 type Customer = { first_name?: string | null; last_name?: string | null; company_name?: string | null; email?: string | null; phone?: string | null };
-type LineItem = { description: string; quantity: number; unit_price: number; total: number; photo_urls?: string[] | null };
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  photo_urls?: string[] | null;
+  materials_description?: string | null;
+  materials_cost?: number | null;
+};
 
 function header(org: Org) {
   const logo = org.logo_url
@@ -58,13 +66,18 @@ function lineTable(items: LineItem[], totals: { subtotal: number; discount?: num
                 </div>
               </td></tr>`
             : "";
+          const matRow = Number(li.materials_cost ?? 0) > 0
+            ? `<tr><td colspan="4" style="padding:0 8px 4px 24px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#a16207;">
+                + Materials${li.materials_description ? `: ${escapeHtml(li.materials_description)}` : ""} (${formatCurrency(Number(li.materials_cost), currency)})
+              </td></tr>`
+            : "";
           return `
           <tr>
             <td style="padding:8px;border-bottom:1px solid #f1f5f9;">${escapeHtml(li.description)}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${li.quantity}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;">${formatCurrency(li.unit_price, currency)}</td>
             <td style="padding:8px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:600;">${formatCurrency(li.total, currency)}</td>
-          </tr>${photoRow}`;
+          </tr>${matRow}${photoRow}`;
         }).join("")}
         <tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Subtotal</td><td style="text-align:right;padding:6px 8px;">${formatCurrency(totals.subtotal, currency)}</td></tr>
         ${totals.discount && totals.discount > 0 ? `<tr><td colspan="3" style="text-align:right;padding:6px 8px;color:#64748b;">Discount</td><td style="text-align:right;padding:6px 8px;">− ${formatCurrency(totals.discount, currency)}</td></tr>` : ""}

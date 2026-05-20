@@ -5,11 +5,25 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { MeasurementModal } from "./measurement-modal";
 
-// Quantity / unit_price are stored as raw strings so the input can be
-// emptied while typing (previously Number("") snapped them back to 0).
-// Calculations and form submission both coerce with Number().
-type Item = { description: string; quantity: string; unit_price: string; photos: string[] };
-type ItemInput = { description: string; quantity: number | string; unit_price: number | string; photos: string[] };
+// Quantity / unit_price / materials_cost are stored as raw strings so the
+// input can be emptied while typing (previously Number("") snapped them back
+// to 0). Calculations and form submission both coerce with Number().
+type Item = {
+  description: string;
+  quantity: string;
+  unit_price: string;
+  photos: string[];
+  materials_description: string;
+  materials_cost: string;
+};
+type ItemInput = {
+  description: string;
+  quantity: number | string;
+  unit_price: number | string;
+  photos: string[];
+  materials_description?: string | null;
+  materials_cost?: number | string | null;
+};
 type Service = { id: string; name: string; default_price: number | null };
 
 function toItem(i: ItemInput): Item {
@@ -18,6 +32,8 @@ function toItem(i: ItemInput): Item {
     quantity: i.quantity === null || i.quantity === undefined ? "" : String(i.quantity),
     unit_price: i.unit_price === null || i.unit_price === undefined ? "" : String(i.unit_price),
     photos: i.photos ?? [],
+    materials_description: i.materials_description ?? "",
+    materials_cost: i.materials_cost === null || i.materials_cost === undefined ? "" : String(i.materials_cost),
   };
 }
 
@@ -41,7 +57,7 @@ export function LineItemEditor({
   const [items, setItems] = useState<Item[]>(
     initial?.length
       ? initial.map(toItem)
-      : [{ description: "", quantity: "1", unit_price: "0", photos: [] }],
+      : [{ description: "", quantity: "1", unit_price: "0", photos: [], materials_description: "", materials_cost: "" }],
   );
   const [taxRate, setTaxRate] = useState<string>(taxRateInitial !== undefined && taxRateInitial !== null ? String(taxRateInitial) : "0");
   const [discount, setDiscount] = useState<string>(discountInitial !== undefined && discountInitial !== null ? String(discountInitial) : "0");
@@ -57,7 +73,7 @@ export function LineItemEditor({
     setItems((arr) => arr.filter((_, idx) => idx !== i));
   }
   function add() {
-    setItems((arr) => [...arr, { description: "", quantity: "1", unit_price: "0", photos: [] }]);
+    setItems((arr) => [...arr, { description: "", quantity: "1", unit_price: "0", photos: [], materials_description: "", materials_cost: "" }]);
   }
   function applyService(i: number, serviceId: string) {
     const s = services.find((x) => x.id === serviceId);
@@ -90,7 +106,10 @@ export function LineItemEditor({
     update(i, { photos: items[i].photos.filter((u) => u !== url) });
   }
 
-  const subtotal = items.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
+  function lineTotal(it: Item) {
+    return (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) + (Number(it.materials_cost) || 0);
+  }
+  const subtotal = items.reduce((s, it) => s + lineTotal(it), 0);
   const taxBase = Math.max(0, subtotal - (Number(discount) || 0));
   const taxAmount = taxBase * (Number(taxRate) || 0);
   const total = taxBase + taxAmount;
@@ -171,11 +190,41 @@ export function LineItemEditor({
                 <p className="text-[10px] text-gray-500 mt-0.5 text-center">Amount</p>
               </div>
               <div className="col-span-3 sm:col-span-2 text-right pt-2 text-sm font-medium">
-                {formatCurrency((Number(it.quantity) || 0) * (Number(it.unit_price) || 0))}
+                {formatCurrency(lineTotal(it))}
               </div>
               <div className="col-span-2 sm:col-span-1 pt-1 text-right">
                 <button type="button" onClick={() => remove(i)} className="text-gray-400 hover:text-red-600 text-sm">✕</button>
               </div>
+            </div>
+
+            {/* Materials sub-row — costs are tracked separately from labor but
+                roll into the line's total. Hidden inputs always submit so the
+                server gets aligned values per row even when left blank. */}
+            <div className="grid grid-cols-12 gap-2 items-start pl-4 border-l-2 border-amber-200">
+              <div className="col-span-12 sm:col-span-7">
+                <input
+                  name="li_materials_description"
+                  value={it.materials_description}
+                  onChange={(e) => update(i, { materials_description: e.target.value })}
+                  placeholder="Materials (e.g. soap, chemicals, replacement parts) — optional"
+                  className="w-full text-sm"
+                />
+              </div>
+              <div className="col-span-7 sm:col-span-4">
+                <input
+                  name="li_materials_cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={it.materials_cost}
+                  onChange={(e) => update(i, { materials_cost: e.target.value })}
+                  onFocus={(e) => { if (e.target.value === "0") e.target.select(); }}
+                  placeholder="0.00"
+                  className="w-full text-sm"
+                />
+                <p className="text-[10px] text-gray-500 mt-0.5 text-center">Materials cost</p>
+              </div>
+              <div className="col-span-5 sm:col-span-1" />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
